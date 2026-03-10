@@ -5,6 +5,7 @@ import com.customblocks.network.CustomBlockSyncPayload;
 import com.mojang.brigadier.arguments.StringArgumentType;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -27,8 +28,6 @@ public class CustomBlockCommand {
                 CommandManager.literal("customblock")
                     .requires(src -> src.hasPermissionLevel(2))
 
-                    // /customblock create <id> <name>
-                    // name uses underscores for spaces e.g. Lava_Brick
                     .then(CommandManager.literal("create")
                         .then(CommandManager.argument("id", StringArgumentType.word())
                             .then(CommandManager.argument("name", StringArgumentType.word())
@@ -45,9 +44,6 @@ public class CustomBlockCommand {
                         )
                     )
 
-                    // /customblock createurl <id> <name> <url>
-                    // URL is LAST so it can contain slashes safely
-                    // Use underscores in name for spaces e.g. Lava_Brick
                     .then(CommandManager.literal("createurl")
                         .then(CommandManager.argument("id", StringArgumentType.word())
                             .then(CommandManager.argument("name", StringArgumentType.word())
@@ -63,12 +59,10 @@ public class CustomBlockCommand {
                         )
                     )
 
-                    // /customblock list
                     .then(CommandManager.literal("list")
                         .executes(ctx -> listBlocks(ctx.getSource()))
                     )
 
-                    // /customblock help
                     .then(CommandManager.literal("help")
                         .executes(ctx -> showHelp(ctx.getSource()))
                     )
@@ -77,11 +71,11 @@ public class CustomBlockCommand {
     }
 
     private static int createBlock(ServerCommandSource source, String rawId,
-                                   String displayName, String imageUrl) {
+                                    String displayName, String imageUrl) {
         String blockId = rawId.toLowerCase().replaceAll("[^a-z0-9_]", "_");
 
         if (blockId.isEmpty()) {
-            source.sendError(Text.literal("[CustomBlocks] Invalid ID: " + rawId));
+            source.sendError(Text.literal("[CustomBlocks] Invalid block ID: " + rawId));
             return 0;
         }
         if (CustomBlocksMod.CUSTOM_BLOCKS.containsKey(blockId)) {
@@ -95,75 +89,91 @@ public class CustomBlockCommand {
         try {
             Files.writeString(new File(blockFolder, "name.txt").toPath(), displayName);
         } catch (IOException e) {
-            source.sendError(Text.literal("[CustomBlocks] Could not write name.txt: " + e.getMessage()));
+            source.sendError(Text.literal("[CustomBlocks] Could not write name.txt"));
             return 0;
         }
 
-        byte[] textureBytes;
-        File textureFile = new File(blockFolder, "texture.png");
+        MinecraftServer server = source.getServer();
 
         if (imageUrl != null) {
-            source.sendMessage(Text.literal("§e[CustomBlocks] Downloading texture..."));
-            try {
-                HttpClient http = HttpClient.newBuilder()
-                        .connectTimeout(Duration.ofSeconds(10))
-                        .build();
-                HttpRequest req = HttpRequest.newBuilder()
-                        .uri(URI.create(imageUrl))
-                        .header("User-Agent", "CustomBlocksMod/1.0")
-                        .timeout(Duration.ofSeconds(15))
-                        .build();
-                HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+            source.sendMessage(Text.literal("§e[CustomBlocks] Downloading texture for '" + displayName + "'..."));
+            final String finalUrl = imageUrl;
+            final String finalDisplayName = displayName;
 
-                if (res.statusCode() != 200) {
-                    source.sendError(Text.literal("[CustomBlocks] Download failed. HTTP " + res.statusCode()));
-                    return 0;
+            Thread downloadThread = new Thread(() -> {
+                try {
+                    HttpClient http = HttpClient.newBuilder()
+                            .connectTimeout(Duration.ofSeconds(10))
+                            .build();
+                    HttpRequest req = HttpRequest.newBuilder()
+                            .uri(URI.create(finalUrl))
+                            .header("User-Agent", "CustomBlocksMod/1.0")
+                            .timeout(Duration.ofSeconds(15))
+                            .build();
+                    HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+
+                    if (res.statusCode() != 200) {
+                        server.execute(() -> source.sendError(
+                            Text.literal("[CustomBlocks] Download failed. HTTP " + res.statusCode())));
+                        return;
+                    }
+
+                    byte[] textureBytes = res.body();
+                    File textureFile = new File(blockFolder, "texture.png");
+                    Files.write(textureFile.toPath(), textureBytes);
+
+                    server.execute(() -> finishCreation(source, server, blockId, finalDisplayName,
+                                                         blockFolder, textureFile, textureBytes));
+
+                } catch (Exception e) {
+                    server.execute(() -> source.sendError(
+                        Text.literal("[CustomBlocks] Download error: " + e.getMessage())));
                 }
-                textureBytes = res.body();
-                Files.write(textureFile.toPath(), textureBytes);
-                source.sendMessage(Text.literal("§a[CustomBlocks] Texture downloaded!"));
+            }, "CustomBlocks-Download");
+            downloadThread.setDaemon(true);
+            downloadThread.start();
 
-            } catch (Exception e) {
-                source.sendError(Text.literal("[CustomBlocks] Download error: " + e.getMessage()));
-                return 0;
-            }
         } else {
-            textureBytes = getPlaceholderPng();
+            byte[] textureBytes = getPlaceholderPng();
+            File textureFile = new File(blockFolder, "texture.png");
             try {
                 Files.write(textureFile.toPath(), textureBytes);
             } catch (IOException e) {
                 source.sendError(Text.literal("[CustomBlocks] Could not write texture."));
                 return 0;
             }
+            finishCreation(source, server, blockId, displayName, blockFolder, textureFile, textureBytes);
         }
 
+        return 1;
+    }
+
+    private static void finishCreation(ServerCommandSource source, MinecraftServer server,
+                                        String blockId, String displayName,
+                                        File blockFolder, File textureFile, byte[] textureBytes) {
         boolean ok = CustomBlocksMod.registerBlockDynamic(blockId, displayName, blockFolder, textureFile);
         if (!ok) {
             source.sendError(Text.literal("[CustomBlocks] Failed to register block!"));
-            return 0;
+            return;
         }
 
-        // Send to all connected players
         CustomBlockSyncPayload payload = new CustomBlockSyncPayload(blockId, displayName, textureBytes);
-        for (ServerPlayerEntity player : source.getServer().getPlayerManager().getPlayerList()) {
+        for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
             ServerPlayNetworking.send(player, payload);
         }
 
-        // Give item to the player who ran the command
         if (source.getEntity() instanceof ServerPlayerEntity player) {
-            net.minecraft.item.ItemStack stack = new net.minecraft.item.ItemStack(
-                    CustomBlocksMod.CUSTOM_BLOCKS.get(blockId));
-            player.giveItemStack(stack);
+            player.giveItemStack(new net.minecraft.item.ItemStack(
+                    CustomBlocksMod.CUSTOM_BLOCKS.get(blockId)));
         }
 
-        source.sendMessage(Text.literal("§a[CustomBlocks] '" + displayName + "' created! Texture loading..."));
+        source.sendMessage(Text.literal("§a[CustomBlocks] '" + displayName + "' created and given to you!"));
         source.sendMessage(Text.literal("§7ID: customblocks:" + blockId));
-        return 1;
     }
 
     private static int listBlocks(ServerCommandSource source) {
         if (CustomBlocksMod.CUSTOM_BLOCKS.isEmpty()) {
-            source.sendMessage(Text.literal("§7[CustomBlocks] No custom blocks loaded yet."));
+            source.sendMessage(Text.literal("§7[CustomBlocks] No custom blocks loaded."));
             return 1;
         }
         source.sendMessage(Text.literal("§e[CustomBlocks] Loaded blocks:"));
@@ -177,12 +187,12 @@ public class CustomBlockCommand {
     private static int showHelp(ServerCommandSource source) {
         source.sendMessage(Text.literal("§e=== CustomBlocks Commands ==="));
         source.sendMessage(Text.literal("§f/customblock create <id> <name>"));
-        source.sendMessage(Text.literal("  §7Creates a block with a grey placeholder texture."));
+        source.sendMessage(Text.literal("  §7Grey placeholder texture. Underscores = spaces in name."));
         source.sendMessage(Text.literal("§f/customblock createurl <id> <name> <url>"));
-        source.sendMessage(Text.literal("  §7URL goes LAST. Use underscores in name for spaces."));
+        source.sendMessage(Text.literal("  §7Downloads texture. URL goes LAST."));
         source.sendMessage(Text.literal("§7Example:"));
         source.sendMessage(Text.literal("§f  /customblock createurl lava_brick Lava_Brick https://i.imgur.com/abc.png"));
-        source.sendMessage(Text.literal("§aNo restart needed! Block appears immediately."));
+        source.sendMessage(Text.literal("§aNo restart needed!"));
         return 1;
     }
 
