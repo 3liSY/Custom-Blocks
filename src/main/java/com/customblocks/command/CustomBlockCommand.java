@@ -28,12 +28,13 @@ public class CustomBlockCommand {
                     .requires(src -> src.hasPermissionLevel(2))
 
                     // /customblock create <id> <name>
+                    // name uses underscores for spaces e.g. Lava_Brick
                     .then(CommandManager.literal("create")
                         .then(CommandManager.argument("id", StringArgumentType.word())
-                            .then(CommandManager.argument("name", StringArgumentType.greedyString())
+                            .then(CommandManager.argument("name", StringArgumentType.word())
                                 .executes(ctx -> {
                                     String id   = StringArgumentType.getString(ctx, "id");
-                                    String name = StringArgumentType.getString(ctx, "name");
+                                    String name = StringArgumentType.getString(ctx, "name").replace("_", " ");
                                     return createBlock(ctx.getSource(), id, name, null);
                                 })
                             )
@@ -44,23 +45,20 @@ public class CustomBlockCommand {
                         )
                     )
 
-                    // /customblock createurl <id> <url> <name>
+                    // /customblock createurl <id> <name> <url>
+                    // URL is LAST so it can contain slashes safely
+                    // Use underscores in name for spaces e.g. Lava_Brick
                     .then(CommandManager.literal("createurl")
                         .then(CommandManager.argument("id", StringArgumentType.word())
-                            .then(CommandManager.argument("url", StringArgumentType.word())
-                                .then(CommandManager.argument("name", StringArgumentType.greedyString())
+                            .then(CommandManager.argument("name", StringArgumentType.word())
+                                .then(CommandManager.argument("url", StringArgumentType.greedyString())
                                     .executes(ctx -> {
                                         String id   = StringArgumentType.getString(ctx, "id");
-                                        String url  = StringArgumentType.getString(ctx, "url");
-                                        String name = StringArgumentType.getString(ctx, "name");
+                                        String name = StringArgumentType.getString(ctx, "name").replace("_", " ");
+                                        String url  = StringArgumentType.getString(ctx, "url").trim();
                                         return createBlock(ctx.getSource(), id, name, url);
                                     })
                                 )
-                                .executes(ctx -> {
-                                    String id  = StringArgumentType.getString(ctx, "id");
-                                    String url = StringArgumentType.getString(ctx, "url");
-                                    return createBlock(ctx.getSource(), id, id, url);
-                                })
                             )
                         )
                     )
@@ -91,9 +89,9 @@ public class CustomBlockCommand {
             return 0;
         }
 
-        // 1. Create config folder and write name.txt
         File blockFolder = new File("config/customblocks/" + blockId);
         blockFolder.mkdirs();
+
         try {
             Files.writeString(new File(blockFolder, "name.txt").toPath(), displayName);
         } catch (IOException e) {
@@ -101,7 +99,6 @@ public class CustomBlockCommand {
             return 0;
         }
 
-        // 2. Get texture bytes
         byte[] textureBytes;
         File textureFile = new File(blockFolder, "texture.png");
 
@@ -135,35 +132,31 @@ public class CustomBlockCommand {
             try {
                 Files.write(textureFile.toPath(), textureBytes);
             } catch (IOException e) {
-                source.sendError(Text.literal("[CustomBlocks] Could not write texture: " + e.getMessage()));
+                source.sendError(Text.literal("[CustomBlocks] Could not write texture."));
                 return 0;
             }
         }
 
-        // 3. Register block in server registry right now
         boolean ok = CustomBlocksMod.registerBlockDynamic(blockId, displayName, blockFolder, textureFile);
         if (!ok) {
-            source.sendError(Text.literal("[CustomBlocks] Failed to register block in registry!"));
+            source.sendError(Text.literal("[CustomBlocks] Failed to register block!"));
             return 0;
         }
 
-        // 4. Send sync packet to every connected player so their client
-        //    registers + reloads the block immediately — no restart needed
+        // Send to all connected players
         CustomBlockSyncPayload payload = new CustomBlockSyncPayload(blockId, displayName, textureBytes);
         for (ServerPlayerEntity player : source.getServer().getPlayerManager().getPlayerList()) {
             ServerPlayNetworking.send(player, payload);
         }
 
-        // 5. Give the item to the player who ran the command (if they are a player)
+        // Give item to the player who ran the command
         if (source.getEntity() instanceof ServerPlayerEntity player) {
             net.minecraft.item.ItemStack stack = new net.minecraft.item.ItemStack(
                     CustomBlocksMod.CUSTOM_BLOCKS.get(blockId));
             player.giveItemStack(stack);
-            source.sendMessage(Text.literal("§a[CustomBlocks] Block created and added to your hand!"));
-        } else {
-            source.sendMessage(Text.literal("§a[CustomBlocks] Block '" + displayName + "' created successfully!"));
         }
 
+        source.sendMessage(Text.literal("§a[CustomBlocks] '" + displayName + "' created! Texture loading..."));
         source.sendMessage(Text.literal("§7ID: customblocks:" + blockId));
         return 1;
     }
@@ -185,16 +178,14 @@ public class CustomBlockCommand {
         source.sendMessage(Text.literal("§e=== CustomBlocks Commands ==="));
         source.sendMessage(Text.literal("§f/customblock create <id> <name>"));
         source.sendMessage(Text.literal("  §7Creates a block with a grey placeholder texture."));
-        source.sendMessage(Text.literal("§f/customblock createurl <id> <url> <name>"));
-        source.sendMessage(Text.literal("  §7Creates a block and downloads the texture from the URL."));
-        source.sendMessage(Text.literal("§f/customblock list §7— lists all loaded blocks."));
-        source.sendMessage(Text.literal("§aNo restart needed! The block appears immediately."));
+        source.sendMessage(Text.literal("§f/customblock createurl <id> <name> <url>"));
+        source.sendMessage(Text.literal("  §7URL goes LAST. Use underscores in name for spaces."));
         source.sendMessage(Text.literal("§7Example:"));
-        source.sendMessage(Text.literal("§f  /customblock createurl lava_brick https://i.imgur.com/abc.png Lava Brick"));
+        source.sendMessage(Text.literal("§f  /customblock createurl lava_brick Lava_Brick https://i.imgur.com/abc.png"));
+        source.sendMessage(Text.literal("§aNo restart needed! Block appears immediately."));
         return 1;
     }
 
-    /** 1x1 grey PNG placeholder */
     private static byte[] getPlaceholderPng() {
         return new byte[]{
             (byte)0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,
