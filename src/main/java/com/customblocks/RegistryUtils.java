@@ -16,16 +16,12 @@ public class RegistryUtils {
             if (f.getType() == boolean.class) {
                 f.setAccessible(true);
                 try {
-                    if (f.getBoolean(probe)) {
-                        found = f;
-                        break;
-                    }
+                    if (f.getBoolean(probe)) { found = f; break; }
                 } catch (IllegalAccessException ignored) {}
             }
         }
-        if (found == null) {
+        if (found == null)
             throw new RuntimeException("[CustomBlocks] Could not detect frozen field in SimpleRegistry.");
-        }
         FROZEN_FIELD = found;
         CustomBlocksMod.LOGGER.info("[CustomBlocks] Detected registry frozen field: {}", found.getName());
     }
