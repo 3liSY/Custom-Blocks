@@ -11,7 +11,6 @@ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.minecraft.block.AbstractBlock;
 import net.minecraft.client.MinecraftClient;
-import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
@@ -56,7 +55,6 @@ public class CustomBlocksClient implements ClientModInitializer {
                                         String displayName, byte[] textureBytes) throws IOException {
         if (CustomBlocksMod.CUSTOM_BLOCKS.containsKey(blockId)) return;
 
-        // Use actual MC directory so Lunar Client and other launchers work
         File mcDir = client.runDirectory;
         File blockFolder = new File(mcDir, "config/customblocks/" + blockId);
         blockFolder.mkdirs();
@@ -76,25 +74,23 @@ public class CustomBlocksClient implements ClientModInitializer {
         RegistryUtils.freeze(blockReg);
 
         RegistryUtils.unfreeze(itemReg);
-        BlockItem blockItem = new BlockItem(block, new Item.Settings());
+        CustomBlock.CustomBlockItem blockItem = new CustomBlock.CustomBlockItem(block, new Item.Settings());
         Registry.register(Registries.ITEM, id, blockItem);
         RegistryUtils.freeze(itemReg);
 
         CustomBlocksMod.CUSTOM_BLOCKS.put(blockId, block);
         CustomBlocksMod.BLOCK_TEXTURES.put(blockId, textureFile);
 
-        // Generate pack and reload — texture will appear instantly
         ResourcePackGenerator.generate();
         injectPackIfNeeded(client);
         client.reloadResources().thenRun(() ->
-            CustomBlocksMod.LOGGER.info("[CustomBlocks] '{}' is live with texture!", blockId));
+            CustomBlocksMod.LOGGER.info("[CustomBlocks] '{}' is live!", blockId));
     }
 
     private static void injectPackIfNeeded(MinecraftClient client) {
         if (!client.options.resourcePacks.contains(PACK_ENTRY)) {
             client.options.resourcePacks.add(PACK_ENTRY);
             client.options.write();
-            CustomBlocksMod.LOGGER.info("[CustomBlocks] Injected resource pack entry.");
         }
     }
 }
