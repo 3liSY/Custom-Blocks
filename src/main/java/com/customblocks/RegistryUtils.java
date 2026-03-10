@@ -4,23 +4,26 @@ import net.minecraft.registry.SimpleRegistry;
 
 import java.lang.reflect.Field;
 
-/**
- * Uses reflection to temporarily unfreeze a Minecraft registry so we can
- * register new blocks/items after startup.
- */
 public class RegistryUtils {
 
     private static final Field FROZEN_FIELD;
 
     static {
-        try {
-            FROZEN_FIELD = SimpleRegistry.class.getDeclaredField("frozen");
-            FROZEN_FIELD.setAccessible(true);
-        } catch (NoSuchFieldException e) {
-            throw new RuntimeException(
-                "[CustomBlocks] Could not find 'frozen' field in SimpleRegistry. " +
-                "Possible Minecraft version mismatch.", e);
+        Field found = null;
+        for (Field f : SimpleRegistry.class.getDeclaredFields()) {
+            if (f.getType() == boolean.class) {
+                f.setAccessible(true);
+                found = f;
+                break;
+            }
         }
+        if (found == null) {
+            throw new RuntimeException(
+                "[CustomBlocks] Could not find boolean field in SimpleRegistry. " +
+                "Please report this with your Minecraft version.");
+        }
+        FROZEN_FIELD = found;
+        CustomBlocksMod.LOGGER.info("[CustomBlocks] Found registry frozen field: {}", found.getName());
     }
 
     public static void unfreeze(SimpleRegistry<?> registry) {
