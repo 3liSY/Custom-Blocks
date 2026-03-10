@@ -10,9 +10,7 @@ import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.block.AbstractBlock;
 import net.minecraft.entity.ItemEntity;
-import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
-import net.minecraft.item.ItemGroup;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.registry.Registries;
@@ -38,7 +36,7 @@ public class CustomBlocksMod implements ModInitializer {
     public static final Map<String, CustomBlock> CUSTOM_BLOCKS = new LinkedHashMap<>();
     public static final Map<String, File> BLOCK_TEXTURES = new LinkedHashMap<>();
 
-    public static final RegistryKey<ItemGroup> CUSTOM_BLOCKS_TAB =
+    public static final RegistryKey<net.minecraft.item.ItemGroup> CUSTOM_BLOCKS_TAB =
         RegistryKey.of(RegistryKeys.ITEM_GROUP, Identifier.of(MOD_ID, "blocks"));
 
     @Override
@@ -46,7 +44,6 @@ public class CustomBlocksMod implements ModInitializer {
         PayloadTypeRegistry.playS2C().register(CustomBlockSyncPayload.ID, CustomBlockSyncPayload.CODEC);
         CustomBlockCommand.register();
 
-        // Register the custom creative tab
         Registry.register(Registries.ITEM_GROUP, CUSTOM_BLOCKS_TAB,
             FabricItemGroup.builder()
                 .displayName(Text.literal("Custom Blocks"))
@@ -117,7 +114,7 @@ public class CustomBlocksMod implements ModInitializer {
                 RegistryUtils.freeze(blockReg);
 
                 RegistryUtils.unfreeze(itemReg);
-                BlockItem blockItem = new BlockItem(block, new Item.Settings());
+                CustomBlock.CustomBlockItem blockItem = new CustomBlock.CustomBlockItem(block, new Item.Settings());
                 Registry.register(Registries.ITEM, id, blockItem);
                 RegistryUtils.freeze(itemReg);
 
@@ -126,7 +123,7 @@ public class CustomBlocksMod implements ModInitializer {
             } else {
                 BlockConfig config = BlockConfig.load(blockFolder);
                 CustomBlock block = new CustomBlock(displayName, config.applyTo(AbstractBlock.Settings.create()));
-                BlockItem blockItem = new BlockItem(block, new Item.Settings());
+                CustomBlock.CustomBlockItem blockItem = new CustomBlock.CustomBlockItem(block, new Item.Settings());
                 Registry.register(Registries.BLOCK, id, block);
                 Registry.register(Registries.ITEM, id, blockItem);
                 CUSTOM_BLOCKS.put(blockId, block);
