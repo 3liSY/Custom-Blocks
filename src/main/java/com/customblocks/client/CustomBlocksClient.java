@@ -15,8 +15,6 @@ import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.SimpleRegistry;
 import net.minecraft.util.Identifier;
 
@@ -31,10 +29,14 @@ public class CustomBlocksClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
-        if (!CustomBlocksMod.CUSTOM_BLOCKS.isEmpty()) ResourcePackGenerator.generate();
+        if (!CustomBlocksMod.CUSTOM_BLOCKS.isEmpty()) {
+            ResourcePackGenerator.generate();
+        }
 
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
-            if (!CustomBlocksMod.CUSTOM_BLOCKS.isEmpty()) injectPackIfNeeded(client);
+            if (!CustomBlocksMod.CUSTOM_BLOCKS.isEmpty()) {
+                injectPackIfNeeded(client);
+            }
         });
 
         ClientPlayNetworking.registerGlobalReceiver(CustomBlockSyncPayload.ID,
@@ -46,7 +48,7 @@ public class CustomBlocksClient implements ClientModInitializer {
                     try {
                         handleNewBlock(context.client(), blockId, displayName, texture);
                     } catch (Exception e) {
-                        CustomBlocksMod.LOGGER.error("[CustomBlocks] Sync packet error for '{}'", blockId, e);
+                        CustomBlocksMod.LOGGER.error("[CustomBlocks] Sync error for '{}'", blockId, e);
                     }
                 });
             }
@@ -64,21 +66,18 @@ public class CustomBlocksClient implements ClientModInitializer {
         Files.writeString(new File(blockFolder, "name.txt").toPath(), displayName);
 
         Identifier id = Identifier.of(CustomBlocksMod.MOD_ID, blockId);
-        RegistryKey<net.minecraft.block.Block> blockKey = RegistryKey.of(RegistryKeys.BLOCK, id);
-        RegistryKey<Item> itemKey = RegistryKey.of(RegistryKeys.ITEM, id);
-
-        CustomBlock block = new CustomBlock(displayName,
-            AbstractBlock.Settings.create().strength(1.5f, 6.0f).registryKey(blockKey));
-        BlockItem blockItem = new BlockItem(block, new Item.Settings().registryKey(itemKey));
 
         SimpleRegistry<net.minecraft.block.Block> blockReg =
             (SimpleRegistry<net.minecraft.block.Block>) Registries.BLOCK;
         SimpleRegistry<Item> itemReg = (SimpleRegistry<Item>) Registries.ITEM;
 
         RegistryUtils.unfreeze(blockReg);
+        CustomBlock block = new CustomBlock(displayName, AbstractBlock.Settings.create().strength(1.5f, 6.0f));
         Registry.register(Registries.BLOCK, id, block);
         RegistryUtils.freeze(blockReg);
+
         RegistryUtils.unfreeze(itemReg);
+        BlockItem blockItem = new BlockItem(block, new Item.Settings());
         Registry.register(Registries.ITEM, id, blockItem);
         RegistryUtils.freeze(itemReg);
 
@@ -87,6 +86,7 @@ public class CustomBlocksClient implements ClientModInitializer {
 
         ResourcePackGenerator.generate();
         injectPackIfNeeded(client);
+
         client.reloadResources().thenRun(() ->
             CustomBlocksMod.LOGGER.info("[CustomBlocks] '{}' is live!", blockId));
     }
