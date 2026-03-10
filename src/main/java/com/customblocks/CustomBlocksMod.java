@@ -16,8 +16,6 @@ import net.minecraft.item.ItemGroups;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.registry.Registry;
-import net.minecraft.registry.RegistryKey;
-import net.minecraft.registry.RegistryKeys;
 import net.minecraft.registry.SimpleRegistry;
 import net.minecraft.util.Identifier;
 import org.slf4j.Logger;
@@ -62,11 +60,13 @@ public class CustomBlocksMod implements ModInitializer {
         if (!configDir.exists()) { configDir.mkdirs(); return; }
         File[] folders = configDir.listFiles(File::isDirectory);
         if (folders == null) return;
+
         for (File folder : folders) {
             String blockId = folder.getName().toLowerCase().replaceAll("[^a-z0-9_]", "_");
             if (blockId.isEmpty() || CUSTOM_BLOCKS.containsKey(blockId)) continue;
             File textureFile = new File(folder, "texture.png");
             if (!textureFile.exists()) continue;
+
             String displayName = folder.getName();
             File nameFile = new File(folder, "name.txt");
             if (nameFile.exists()) {
@@ -84,38 +84,42 @@ public class CustomBlocksMod implements ModInitializer {
         return registerBlockInternal(blockId, displayName, blockFolder, textureFile, true);
     }
 
-    public static boolean registerBlockInternal(String blockId, String displayName,
-                                                  File blockFolder, File textureFile, boolean dynamic) {
+    private static boolean registerBlockInternal(String blockId, String displayName,
+                                                   File blockFolder, File textureFile, boolean dynamic) {
         try {
             Identifier id = Identifier.of(MOD_ID, blockId);
-            RegistryKey<net.minecraft.block.Block> blockKey = RegistryKey.of(RegistryKeys.BLOCK, id);
-            RegistryKey<Item> itemKey = RegistryKey.of(RegistryKeys.ITEM, id);
-
-            BlockConfig config = BlockConfig.load(blockFolder);
-            AbstractBlock.Settings blockSettings = config.applyTo(
-                AbstractBlock.Settings.create().registryKey(blockKey));
-            CustomBlock block = new CustomBlock(displayName, blockSettings);
-            BlockItem blockItem = new BlockItem(block, new Item.Settings().registryKey(itemKey));
 
             if (dynamic) {
                 SimpleRegistry<net.minecraft.block.Block> blockReg =
                     (SimpleRegistry<net.minecraft.block.Block>) Registries.BLOCK;
                 SimpleRegistry<Item> itemReg = (SimpleRegistry<Item>) Registries.ITEM;
+
                 RegistryUtils.unfreeze(blockReg);
+                BlockConfig config = BlockConfig.load(blockFolder);
+                CustomBlock block = new CustomBlock(displayName, config.applyTo(AbstractBlock.Settings.create()));
                 Registry.register(Registries.BLOCK, id, block);
                 RegistryUtils.freeze(blockReg);
+
                 RegistryUtils.unfreeze(itemReg);
+                BlockItem blockItem = new BlockItem(block, new Item.Settings());
                 Registry.register(Registries.ITEM, id, blockItem);
                 RegistryUtils.freeze(itemReg);
+
+                CUSTOM_BLOCKS.put(blockId, block);
+                BLOCK_TEXTURES.put(blockId, textureFile);
             } else {
+                BlockConfig config = BlockConfig.load(blockFolder);
+                CustomBlock block = new CustomBlock(displayName, config.applyTo(AbstractBlock.Settings.create()));
+                BlockItem blockItem = new BlockItem(block, new Item.Settings());
                 Registry.register(Registries.BLOCK, id, block);
                 Registry.register(Registries.ITEM, id, blockItem);
+                CUSTOM_BLOCKS.put(blockId, block);
+                BLOCK_TEXTURES.put(blockId, textureFile);
             }
 
-            CUSTOM_BLOCKS.put(blockId, block);
-            BLOCK_TEXTURES.put(blockId, textureFile);
             LOGGER.info("[CustomBlocks] Registered '{}' ('{}')", blockId, displayName);
             return true;
+
         } catch (Exception e) {
             LOGGER.error("[CustomBlocks] Failed to register block '{}'", blockId, e);
             return false;
