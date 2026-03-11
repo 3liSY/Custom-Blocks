@@ -1,11 +1,12 @@
 {
   "schemaVersion": 1,
   "id": "customblocks",
-  "version": "1.0.0",
-  "name": "Custom Blocks",
-  "description": "Add custom textured blocks using PNG images - no coding needed.",
-  "authors": [ "You" ],
+  "version": "100",
+  "name": "Custom Blocks Maker",
+  "description": "Make custom textured blocks using PNG images and simple commands - no coding needed.",
+  "authors": [ "3liSY and Claude AI" ],
   "license": "MIT",
+  "icon": "pack.png",
   "environment": "*",
   "entrypoints": {
     "main":   [ "com.customblocks.CustomBlocksMod" ],
