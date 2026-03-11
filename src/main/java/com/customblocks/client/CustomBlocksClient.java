@@ -31,6 +31,7 @@ public class CustomBlocksClient implements ClientModInitializer {
     private static final String PACK_ENTRY = "file/customblocks_generated";
     private static final AtomicBoolean reloadScheduled = new AtomicBoolean(false);
 
+    // Set to true after reload — creative tab will refresh on next tick if open
     public static volatile boolean pendingCreativeRefresh = false;
 
     private static KeyBinding openGuiKey;
@@ -52,25 +53,33 @@ public class CustomBlocksClient implements ClientModInitializer {
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Open GUI on B press
             while (openGuiKey.wasPressed()) {
                 if (client.currentScreen == null)
                     client.setScreen(new CustomBlocksScreen());
             }
 
-            if (pendingCreativeRefresh && client.player != null
-                    && client.currentScreen instanceof CreativeInventoryScreen) {
+            // After resource reload, bust the ItemGroup icon cache and refresh creative tab
+            if (pendingCreativeRefresh && client.player != null) {
                 pendingCreativeRefresh = false;
-                client.setScreen(new CreativeInventoryScreen(
-                        client.player,
-                        client.player.networkHandler.getEnabledFeatures(),
-                        false
-                ));
+                bustItemGroupIconCache();
+                // Reopen creative screen to rebuild display stacks
+                if (client.currentScreen instanceof CreativeInventoryScreen) {
+                    client.setScreen(new CreativeInventoryScreen(
+                            client.player,
+                            client.player.networkHandler.getEnabledFeatures(),
+                            false
+                    ));
+                }
             }
         });
 
+        // ── FullSyncPayload ─────────────────────────────────────────────────────
         ClientPlayNetworking.registerGlobalReceiver(FullSyncPayload.ID, (payload, context) -> {
             MinecraftClient client = context.client();
             client.execute(() -> {
+                // Clear stale client-side slots and rebuild from server's authoritative data.
+                // This ensures slot indices always match the server exactly on every join/reconnect.
                 SlotManager.clearAll();
                 for (FullSyncPayload.SlotEntry e : payload.entries()) {
                     SlotManager.assignAtIndex(e.index(), e.customId(), e.displayName(), null);
@@ -81,6 +90,7 @@ public class CustomBlocksClient implements ClientModInitializer {
             });
         });
 
+        // ── SlotUpdatePayload ───────────────────────────────────────────────────
         ClientPlayNetworking.registerGlobalReceiver(SlotUpdatePayload.ID, (payload, context) -> {
             MinecraftClient client = context.client();
             client.execute(() -> {
@@ -114,6 +124,7 @@ public class CustomBlocksClient implements ClientModInitializer {
             });
         });
 
+        // ── HUD overlay: show block name only (no ID) ───────────────────────────
         HudRenderCallback.EVENT.register((ctx, tickCounter) -> {
             MinecraftClient client = MinecraftClient.getInstance();
             if (client.world == null || client.player == null) return;
@@ -134,6 +145,40 @@ public class CustomBlocksClient implements ClientModInitializer {
         });
     }
 
+    /** Clear the cached icon on our ItemGroup so MC re-calls our supplier lambda. */
+    private static void bustItemGroupIconCache() {
+        try {
+            net.minecraft.item.ItemGroup group =
+                net.minecraft.registry.Registries.ITEM_GROUP.get(CustomBlocksMod.CUSTOM_BLOCKS_TAB);
+            if (group == null) return;
+            // Try by common Yarn-mapped field names first, then fall back to type scan
+            String[] candidates = {"icon", "field_24603", "iconStack"};
+            for (String name : candidates) {
+                try {
+                    java.lang.reflect.Field f = net.minecraft.item.ItemGroup.class.getDeclaredField(name);
+                    f.setAccessible(true);
+                    if (f.get(group) instanceof net.minecraft.item.ItemStack) {
+                        f.set(group, net.minecraft.item.ItemStack.EMPTY);
+                        CustomBlocksMod.LOGGER.info("[CustomBlocks] Tab icon cache cleared via field '{}'.", name);
+                        return;
+                    }
+                } catch (NoSuchFieldException ignored) {}
+            }
+            // Fallback: scan all ItemStack fields
+            for (java.lang.reflect.Field f : net.minecraft.item.ItemGroup.class.getDeclaredFields()) {
+                if (f.getType() == net.minecraft.item.ItemStack.class) {
+                    f.setAccessible(true);
+                    f.set(group, net.minecraft.item.ItemStack.EMPTY);
+                    CustomBlocksMod.LOGGER.info("[CustomBlocks] Tab icon cache cleared via type scan.");
+                    return;
+                }
+            }
+            CustomBlocksMod.LOGGER.warn("[CustomBlocks] Could not find ItemGroup icon field — tab icon may not update.");
+        } catch (Exception e) {
+            CustomBlocksMod.LOGGER.error("[CustomBlocks] bustItemGroupIconCache failed: {}", e.getMessage());
+        }
+    }
+
     private static void scheduleReload(MinecraftClient client) {
         if (reloadScheduled.compareAndSet(false, true)) {
             Thread t = new Thread(() -> {
@@ -143,6 +188,7 @@ public class CustomBlocksClient implements ClientModInitializer {
                     client.reloadResources().thenRun(() ->
                         client.execute(() -> {
                             CustomBlocksMod.LOGGER.info("[CustomBlocks] Resources reloaded.");
+                            // Signal tick handler to refresh creative tab
                             pendingCreativeRefresh = true;
                         })
                     );

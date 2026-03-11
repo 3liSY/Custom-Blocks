@@ -11,102 +11,137 @@ import net.minecraft.client.gui.widget.TextFieldWidget;
 import net.minecraft.text.Text;
 
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.List;
 
 @Environment(EnvType.CLIENT)
 public class CustomBlocksScreen extends Screen {
 
-    private static final int COLS   = 4;
-    private static final int CELL   = 58;
-    private static final int GAP    = 4;
+    // ── Layout constants ─────────────────────────────────────────────────────
+    private static final int COLS   = 5;
+    private static final int CELL   = 64;
+    private static final int GAP    = 6;
     private static final int GRID_W = COLS * (CELL + GAP) - GAP;
-    private static final int RIGHT_W = 180;
-    private static final int PAD    = 10;
-    private static final int TOP_H  = 34;
+    private static final int RIGHT_W = 220;
+    private static final int PAD    = 12;
+    private static final int TOP_H  = 38;
 
-    private static final int C_BG        = 0xF0101018;
+    // ── Colours ───────────────────────────────────────────────────────────────
+    private static final int C_BG        = 0xF2101018;
     private static final int C_PANEL     = 0xFF181828;
-    private static final int C_BORDER    = 0xFF2A2A50;
-    private static final int C_BORDER_HI = 0xFF5555CC;
-    private static final int C_SELECTED  = 0xFF1A4020;
-    private static final int C_SEL_BDR   = 0xFF44EE44;
-    private static final int C_HOVERED   = 0xFF1A1A40;
+    private static final int C_PANEL2    = 0xFF12121E;
+    private static final int C_BORDER    = 0xFF252540;
+    private static final int C_BORDER_HI = 0xFF5555EE;
+    private static final int C_SELECTED  = 0xFF142814;
+    private static final int C_SEL_BDR   = 0xFF44FF44;
+    private static final int C_HOVERED   = 0xFF1C1C36;
     private static final int C_GOLD      = 0xFFFFD700;
     private static final int C_WHITE     = 0xFFFFFFFF;
     private static final int C_GREY      = 0xFFAAAAAA;
-    private static final int C_DIM       = 0xFF777777;
-    private static final int C_GREEN     = 0xFF55FF55;
-    private static final int C_RED       = 0xFFFF5555;
-    private static final int C_YELLOW    = 0xFFFFAA00;
+    private static final int C_DIM       = 0xFF666688;
+    private static final int C_GREEN     = 0xFF44EE44;
+    private static final int C_RED       = 0xFFFF4444;
+    private static final int C_YELLOW    = 0xFFFFCC00;
+    private static final int C_BLUE      = 0xFF5599FF;
+    private static final int C_ORANGE    = 0xFFFF8800;
+    private static final int C_GLOW_CLR  = 0xFFFFEE44;
 
+    // ── State ─────────────────────────────────────────────────────────────────
     private int px, py, pw, ph;
-
     private String selectedId = null;
-    private int    scroll     = 0;
-    private String search     = "";
+    private int scroll = 0;
+    private String search = "";
+    private int sortMode = 0; // 0=Name, 1=Slot, 2=Glow, 3=Sound
+    private boolean sortAsc = true;
     private final List<SlotManager.SlotData> filtered = new ArrayList<>();
 
-    private String statusMsg   = "";
-    private int    statusColor = C_GREEN;
-    private long   statusUntil = 0;
+    private String statusMsg = "";
+    private int statusColor = C_GREEN;
+    private long statusUntil = 0;
 
     private enum Panel { NONE, CREATE, RENAME, RETEXTURE, PROPERTIES }
     private Panel activePanel = Panel.NONE;
 
-    private ButtonWidget btnCreate, btnGive, btnRename, btnRetexture, btnDelete, btnProperties;
+    // ── Right-panel action buttons ────────────────────────────────────────────
+    private ButtonWidget btnCreate, btnGive, btnGiveStack, btnRename,
+                         btnRetexture, btnProperties, btnDelete, btnReloadTex;
 
+    // ── Sort buttons ──────────────────────────────────────────────────────────
+    private ButtonWidget btnSortName, btnSortSlot, btnSortGlow, btnSortSound, btnSortDir;
+
+    // ── CREATE sub-panel ──────────────────────────────────────────────────────
     private TextFieldWidget fldCreateId, fldCreateName, fldCreateUrl;
     private ButtonWidget    btnCreateOk, btnCreateCancel;
 
+    // ── RENAME sub-panel ──────────────────────────────────────────────────────
     private TextFieldWidget fldRenameNew;
     private ButtonWidget    btnRenameOk, btnRenameCancel;
 
+    // ── RETEXTURE sub-panel ───────────────────────────────────────────────────
     private TextFieldWidget fldRetextureUrl;
     private ButtonWidget    btnRetextureOk, btnRetextureCancel;
 
+    // ── PROPERTIES sub-panel ─────────────────────────────────────────────────
     private ButtonWidget btnGlowMinus, btnGlowPlus;
-    private ButtonWidget btnHardSoft, btnHardNormal, btnHardHard, btnHardUnbreak;
-    private ButtonWidget btnSoundStone, btnSoundWood, btnSoundMetal, btnSoundGlass, btnSoundGrass;
+    private ButtonWidget btnHardInstant, btnHardSoft, btnHardNormal, btnHardHard, btnHardUnbreak;
+    private ButtonWidget btnSoundStone, btnSoundWood, btnSoundMetal, btnSoundGlass,
+                         btnSoundGrass, btnSoundSand, btnSoundWool;
     private ButtonWidget btnPropClose;
 
+    // ── Search ────────────────────────────────────────────────────────────────
     private TextFieldWidget fldSearch;
 
-    public CustomBlocksScreen() {
-        super(Text.literal("Custom Blocks"));
-    }
+    public CustomBlocksScreen() { super(Text.literal("Custom Blocks")); }
 
     @Override
     protected void init() {
-        // Reset panel state on init (called on open AND on window resize)
         activePanel = Panel.NONE;
+
         pw = GRID_W + RIGHT_W + PAD * 3;
-        ph = Math.min(height - 20, 430);
+        ph = Math.min(height - 16, 480);
         px = (width  - pw) / 2;
         py = (height - ph) / 2;
 
         rebuildFiltered();
 
+        // Search bar
         fldSearch = new TextFieldWidget(textRenderer,
                 px + PAD, py + PAD + 14, GRID_W - 2, 16, Text.literal(""));
         fldSearch.setPlaceholder(Text.literal("Search blocks..."));
         fldSearch.setChangedListener(s -> { search = s; scroll = 0; rebuildFiltered(); });
         addDrawableChild(fldSearch);
 
+        // Sort buttons (tiny, row below search)
+        int sy = py + PAD + 32;
+        int sw = (GRID_W - 2 - 3 * 3 - 22) / 4;
+        btnSortName  = mkBtn(px + PAD,              sy, sw, "Name",  b -> setSort(0));
+        btnSortSlot  = mkBtn(px + PAD + sw + 3,     sy, sw, "Slot",  b -> setSort(1));
+        btnSortGlow  = mkBtn(px + PAD + (sw+3)*2,   sy, sw, "Glow",  b -> setSort(2));
+        btnSortSound = mkBtn(px + PAD + (sw+3)*3,   sy, sw, "Sound", b -> setSort(3));
+        btnSortDir   = mkBtn(px + PAD + (sw+3)*4 + 1, sy, 18, "^",  b -> { sortAsc = !sortAsc; rebuildFiltered(); });
+        for (ButtonWidget b : new ButtonWidget[]{btnSortName,btnSortSlot,btnSortGlow,btnSortSound,btnSortDir})
+            addDrawableChild(b);
+
+        // Right-panel action buttons
         int bx = px + PAD + GRID_W + PAD;
-        int by = py + TOP_H + PAD;
+        int by = py + TOP_H + PAD + 16;
         int bw = RIGHT_W - PAD;
-        btnCreate     = mkBtn(bx, by,       bw, "New Block",      b -> openPanel(Panel.CREATE));
-        btnGive       = mkBtn(bx, by + 26,  bw, "Give to Me",     b -> doGive());
-        btnRename     = mkBtn(bx, by + 52,  bw, "Rename",         b -> openPanel(Panel.RENAME));
-        btnRetexture  = mkBtn(bx, by + 78,  bw, "Change Texture", b -> openPanel(Panel.RETEXTURE));
-        btnProperties = mkBtn(bx, by + 104, bw, "Properties",     b -> openPanel(Panel.PROPERTIES));
-        btnDelete     = mkBtn(bx, by + 130, bw, "Delete",         b -> doDelete());
-        for (ButtonWidget b : new ButtonWidget[]{btnCreate,btnGive,btnRename,btnRetexture,btnProperties,btnDelete})
+        btnCreate     = mkBtn(bx, by,       bw, "New Block",         b -> openPanel(Panel.CREATE));
+        btnGive       = mkBtn(bx, by + 26,  bw/2 - 2, "Give x1",    b -> doGive(1));
+        btnGiveStack  = mkBtn(bx + bw/2 + 2, by + 26, bw/2 - 2, "Give x64", b -> doGive(64));
+        btnRename     = mkBtn(bx, by + 52,  bw, "Rename",            b -> openPanel(Panel.RENAME));
+        btnRetexture  = mkBtn(bx, by + 78,  bw, "Change Texture",    b -> openPanel(Panel.RETEXTURE));
+        btnProperties = mkBtn(bx, by + 104, bw, "Properties",        b -> openPanel(Panel.PROPERTIES));
+        btnReloadTex  = mkBtn(bx, by + 130, bw, "Reload Textures",   b -> doReloadTextures());
+        btnDelete     = mkBtn(bx, by + 156, bw, "Delete",            b -> doDelete());
+        for (ButtonWidget b : new ButtonWidget[]{btnCreate,btnGive,btnGiveStack,btnRename,
+                btnRetexture,btnProperties,btnReloadTex,btnDelete})
             addDrawableChild(b);
         updateButtonStates();
 
-        int spY = py + ph - 100;
-        fldCreateId   = mkField(px + PAD, spY,      GRID_W - 2, "id (e.g. discord)");
+        // Sub-panel widgets — built now, added to children only when panel opens
+        int spY = py + ph - 110;
+        fldCreateId   = mkField(px + PAD, spY,      GRID_W - 2, "id (e.g. discord) — no spaces");
         fldCreateName = mkField(px + PAD, spY + 22, GRID_W - 2, "Display Name");
         fldCreateUrl  = mkField(px + PAD, spY + 44, GRID_W - 2, "https://image-url.png");
         fldCreateUrl.setMaxLength(512);
@@ -122,45 +157,75 @@ public class CustomBlocksScreen extends Screen {
         btnRetextureOk     = mkBtn(px + PAD,      spY + 44, 80, "Apply",  b -> doRetexture());
         btnRetextureCancel = mkBtn(px + PAD + 84, spY + 44, 60, "Cancel", b -> closePanel());
 
-        int propY = by + 168;
-        int bwH = (RIGHT_W - PAD - 4) / 4 - 1;
-        btnGlowMinus  = mkBtn(bx,       propY + 22, 22, "-", b -> adjustGlow(-1));
-        btnGlowPlus   = mkBtn(bx + 118, propY + 22, 22, "+", b -> adjustGlow(+1));
-        btnHardSoft   = mkBtn(bx,              propY + 52, bwH, "Soft",   b -> setHard(0.3f));
-        btnHardNormal = mkBtn(bx + bwH + 2,    propY + 52, bwH, "Normal", b -> setHard(1.5f));
-        btnHardHard   = mkBtn(bx + (bwH+2)*2,  propY + 52, bwH, "Hard",  b -> setHard(5.0f));
-        btnHardUnbreak= mkBtn(bx + (bwH+2)*3,  propY + 52, bwH, "Max",   b -> setHard(-1f));
-        int bwS = (RIGHT_W - PAD - 8) / 5;
-        btnSoundStone = mkBtn(bx,              propY + 78, bwS, "Stone", b -> setSound("stone"));
-        btnSoundWood  = mkBtn(bx + (bwS+2),   propY + 78, bwS, "Wood",  b -> setSound("wood"));
-        btnSoundMetal = mkBtn(bx + (bwS+2)*2, propY + 78, bwS, "Metal", b -> setSound("metal"));
-        btnSoundGlass = mkBtn(bx + (bwS+2)*3, propY + 78, bwS, "Glass", b -> setSound("glass"));
-        btnSoundGrass = mkBtn(bx + (bwS+2)*4, propY + 78, bwS, "Grass", b -> setSound("grass"));
-        btnPropClose  = mkBtn(bx, propY + 104, RIGHT_W - PAD, "Done", b -> closePanel());
+        // Properties panel buttons (shown in right panel area)
+        int propY = by + 194;
+        btnGlowMinus   = mkBtn(bx,      propY + 18, 20, "-", b -> adjustGlow(-1));
+        btnGlowPlus    = mkBtn(bx + 140, propY + 18, 20, "+", b -> adjustGlow(+1));
+        int hw = (bw - 8) / 5;
+        btnHardInstant = mkBtn(bx,               propY + 44, hw, "0",    b -> setHard(0f));
+        btnHardSoft    = mkBtn(bx + (hw+2),      propY + 44, hw, "Soft", b -> setHard(0.5f));
+        btnHardNormal  = mkBtn(bx + (hw+2)*2,    propY + 44, hw, "Norm", b -> setHard(1.5f));
+        btnHardHard    = mkBtn(bx + (hw+2)*3,    propY + 44, hw, "Hard", b -> setHard(5.0f));
+        btnHardUnbreak = mkBtn(bx + (hw+2)*4,    propY + 44, hw, "Max",  b -> setHard(-1f));
+        int sw2 = (bw - 12) / 7;
+        btnSoundStone = mkBtn(bx,              propY + 70, sw2, "Stn",  b -> setSound("stone"));
+        btnSoundWood  = mkBtn(bx + (sw2+2),   propY + 70, sw2, "Wd",   b -> setSound("wood"));
+        btnSoundMetal = mkBtn(bx + (sw2+2)*2, propY + 70, sw2, "Mtl",  b -> setSound("metal"));
+        btnSoundGlass = mkBtn(bx + (sw2+2)*3, propY + 70, sw2, "Gls",  b -> setSound("glass"));
+        btnSoundGrass = mkBtn(bx + (sw2+2)*4, propY + 70, sw2, "Grs",  b -> setSound("grass"));
+        btnSoundSand  = mkBtn(bx + (sw2+2)*5, propY + 70, sw2, "Snd",  b -> setSound("sand"));
+        btnSoundWool  = mkBtn(bx + (sw2+2)*6, propY + 70, sw2, "Wl",   b -> setSound("wool"));
+        btnPropClose  = mkBtn(bx, propY + 96, bw, "Done", b -> closePanel());
     }
+
+    // ── Render ────────────────────────────────────────────────────────────────
 
     @Override
     public void render(DrawContext ctx, int mx, int my, float delta) {
         renderBackground(ctx, mx, my, delta);
 
-        ctx.fill(px - 2, py - 2, px + pw + 2, py + ph + 2, C_BORDER);
+        // Outer glow border
+        ctx.fill(px - 3, py - 3, px + pw + 3, py + ph + 3, 0x44_5555EE);
+        ctx.fill(px - 1, py - 1, px + pw + 1, py + ph + 1, C_BORDER_HI);
         ctx.fill(px, py, px + pw, py + ph, C_BG);
 
-        ctx.fillGradient(px, py, px + pw, py + 12, 0xFF1A1A3A, 0xFF101018);
-        ctx.drawCenteredTextWithShadow(textRenderer, "Custom Blocks", px + pw / 2, py + 2, C_GOLD);
+        // Title bar
+        ctx.fillGradient(px, py, px + pw, py + 14, 0xFF1A1A40, 0xFF0E0E1E);
+        ctx.drawCenteredTextWithShadow(textRenderer, "Custom Blocks", px + pw / 2, py + 3, C_GOLD);
 
+        // Divider between grid and right panel
         int divX = px + PAD + GRID_W + PAD;
-        ctx.fill(divX - 1, py + 12, divX, py + ph - 4, C_BORDER);
+        ctx.fill(divX - 1, py + 14, divX, py + ph - 4, C_BORDER);
 
+        // Grid column header
+        ctx.drawTextWithShadow(textRenderer, "Blocks", px + PAD, py + PAD + 3, C_GREY);
+
+        // Sort mode indicator
+        String[] sortNames = {"Name", "Slot", "Glow", "Sound"};
         ctx.drawTextWithShadow(textRenderer,
-                SlotManager.usedSlots() + " / " + SlotManager.MAX_SLOTS + " slots",
-                px + PAD, py + ph - 11, C_DIM);
+            "Sort: " + sortNames[sortMode] + (sortAsc ? " A" : " Z"),
+            px + PAD + GRID_W - 60, py + PAD + 3, C_DIM);
+
+        // Slot usage bar
+        int used = SlotManager.usedSlots();
+        int max  = SlotManager.MAX_SLOTS;
+        float pct = used / (float) max;
+        int barW = GRID_W - 2;
+        int barX = px + PAD;
+        int barY = py + ph - 8;
+        ctx.fill(barX, barY, barX + barW, barY + 4, 0xFF222233);
+        int fillW = (int)(barW * pct);
+        int barColor = pct < 0.6f ? 0xFF44CC44 : pct < 0.9f ? C_YELLOW : C_RED;
+        ctx.fill(barX, barY, barX + fillW, barY + 4, barColor);
+        ctx.drawTextWithShadow(textRenderer,
+            used + " / " + max + " slots", barX, barY - 9, C_DIM);
 
         drawGrid(ctx, mx, my);
         drawRightPanel(ctx);
 
+        // Status message
         if (System.currentTimeMillis() < statusUntil)
-            ctx.drawCenteredTextWithShadow(textRenderer, statusMsg, px + pw / 2, py + ph + 4, statusColor);
+            ctx.drawCenteredTextWithShadow(textRenderer, statusMsg, px + pw / 2, py + ph + 6, statusColor);
 
         drawActivePanel(ctx);
         super.render(ctx, mx, my, delta);
@@ -168,8 +233,8 @@ public class CustomBlocksScreen extends Screen {
 
     private void drawGrid(DrawContext ctx, int mx, int my) {
         int gx = px + PAD;
-        int gy = py + TOP_H;
-        int gh = py + ph - 16;
+        int gy = py + TOP_H + 20;   // extra 20 for sort buttons
+        int gh = py + ph - 20;
 
         ctx.enableScissor(gx, gy, gx + GRID_W, gh);
 
@@ -185,122 +250,174 @@ public class CustomBlocksScreen extends Screen {
             boolean sel = data.customId.equals(selectedId);
             boolean hov = mx >= cx && mx < cx + CELL && my >= cy && my < cy + CELL;
 
+            // Cell background
             ctx.fill(cx, cy, cx + CELL, cy + CELL, sel ? C_SELECTED : (hov ? C_HOVERED : C_PANEL));
-            ctx.drawBorder(cx, cy, CELL, CELL, sel ? C_SEL_BDR : (hov ? C_BORDER_HI : C_BORDER));
+            // Border — thicker for selected
+            if (sel) {
+                ctx.fill(cx-1, cy-1, cx+CELL+1, cy, C_SEL_BDR);
+                ctx.fill(cx-1, cy+CELL, cx+CELL+1, cy+CELL+1, C_SEL_BDR);
+                ctx.fill(cx-1, cy, cx, cy+CELL, C_SEL_BDR);
+                ctx.fill(cx+CELL, cy, cx+CELL+1, cy+CELL, C_SEL_BDR);
+            } else {
+                ctx.drawBorder(cx, cy, CELL, CELL, hov ? C_BORDER_HI : C_BORDER);
+            }
 
-            // Texture — draw full image scaled to fill the cell
+            // Texture — draw inside cell with small padding
             int pad = 4;
-            int tw  = CELL - pad * 2 - 10;
+            int tw  = CELL - pad * 2 - 12; // leave 12px for label
             TextureCache.TexInfo tex = TextureCache.getOrLoad(data.customId, data.texture);
-            // Use tw,tw as both region AND sheet size so the whole texture is drawn scaled
             ctx.drawTexture(tex.id(), cx + pad, cy + pad, 0.0f, 0.0f, tw, tw, tex.width(), tex.height());
 
-            if (data.lightLevel > 0)
-                ctx.drawTextWithShadow(textRenderer, "*", cx + CELL - 10, cy + 2, 0xFFFFDD00);
+            // Glow badge (top-right corner)
+            if (data.lightLevel > 0) {
+                ctx.fill(cx + CELL - 14, cy, cx + CELL, cy + 10, 0xCC_FFEE00);
+                ctx.drawTextWithShadow(textRenderer,
+                    String.valueOf(data.lightLevel), cx + CELL - 12, cy + 1, 0xFF000000);
+            }
 
-            String label = data.displayName.length() > 7
-                    ? data.displayName.substring(0, 6) + "."
+            // Hardness badge (top-left corner)
+            if (data.hardness < 0) {
+                ctx.fill(cx, cy, cx + 10, cy + 10, 0xCC_FF4444);
+                ctx.drawTextWithShadow(textRenderer, "U", cx + 1, cy + 1, C_WHITE);
+            }
+
+            // Name label at bottom of cell
+            String label = data.displayName.length() > 8
+                    ? data.displayName.substring(0, 7) + "."
                     : data.displayName;
-            ctx.drawCenteredTextWithShadow(textRenderer, label, cx + CELL / 2, cy + CELL - 10, C_WHITE);
+            ctx.drawCenteredTextWithShadow(textRenderer, label,
+                cx + CELL / 2, cy + CELL - 10, sel ? C_GREEN : C_WHITE);
         }
 
         ctx.disableScissor();
 
         if (filtered.isEmpty()) {
-            String msg = search.isEmpty() ? "No blocks yet. Click New Block" : "No match for \"" + search + "\"";
-            ctx.drawCenteredTextWithShadow(textRenderer, msg, gx + GRID_W / 2, gy + 50, C_GREY);
+            String msg = search.isEmpty()
+                ? "No blocks yet — press New Block!"
+                : "No match for \"" + search + "\"";
+            int gy2 = py + TOP_H + 20;
+            ctx.drawCenteredTextWithShadow(textRenderer, msg, gx + GRID_W / 2, gy2 + 60, C_GREY);
         }
     }
 
     private void drawRightPanel(DrawContext ctx) {
         int rx = px + PAD + GRID_W + PAD + 2;
-        int ry = py + TOP_H + PAD;
+        int ry = py + PAD;
         int rw = RIGHT_W - PAD - 4;
 
-        ctx.drawCenteredTextWithShadow(textRenderer, "Selected Block", rx + rw / 2, ry - 10, C_GOLD);
+        // Header
+        ctx.fill(rx - 2, ry, rx + rw + 2, ry + 12, 0xFF0E0E28);
+        ctx.drawCenteredTextWithShadow(textRenderer, "Selected Block", rx + rw/2, ry + 2, C_GOLD);
 
         SlotManager.SlotData data = selectedId != null ? SlotManager.getById(selectedId) : null;
         if (data == null) {
-            ctx.drawCenteredTextWithShadow(textRenderer, "-- select a block --", rx + rw / 2, ry + 40, C_GREY);
+            ctx.drawCenteredTextWithShadow(textRenderer, "-- none selected --", rx + rw/2, ry + 30, C_DIM);
             return;
         }
 
-        int previewSize = 60;
-        int pvX = rx + (rw - previewSize) / 2;
-        int pvY = ry + 30;
-        ctx.fill(pvX - 2, pvY - 2, pvX + previewSize + 2, pvY + previewSize + 2, C_BORDER);
+        // Large preview
+        int pvSize = 72;
+        int pvX = rx + (rw - pvSize) / 2;
+        int pvY = ry + 16;
+        ctx.fill(pvX - 2, pvY - 2, pvX + pvSize + 2, pvY + pvSize + 2, C_BORDER);
+        ctx.fill(pvX - 1, pvY - 1, pvX + pvSize + 1, pvY + pvSize + 1, C_PANEL2);
         TextureCache.TexInfo tex = TextureCache.getOrLoad(data.customId, data.texture);
-        ctx.drawTexture(tex.id(), pvX, pvY, 0.0f, 0.0f, previewSize, previewSize, tex.width(), tex.height());
+        ctx.drawTexture(tex.id(), pvX, pvY, 0.0f, 0.0f, pvSize, pvSize, tex.width(), tex.height());
 
-        int infoY = pvY + previewSize + 8;
-        ctx.drawCenteredTextWithShadow(textRenderer, data.displayName,        rx + rw / 2, infoY,      C_WHITE);
-        ctx.drawCenteredTextWithShadow(textRenderer, "ID: " + data.customId,  rx + rw / 2, infoY + 11, C_GREY);
-        ctx.drawCenteredTextWithShadow(textRenderer, "Slot " + data.index,    rx + rw / 2, infoY + 22, C_DIM);
+        // Block info
+        int infoY = pvY + pvSize + 6;
+        ctx.drawCenteredTextWithShadow(textRenderer, data.displayName, rx + rw/2, infoY,      C_WHITE);
+        ctx.drawCenteredTextWithShadow(textRenderer, "id: " + data.customId, rx + rw/2, infoY + 10, C_GREY);
+        ctx.drawCenteredTextWithShadow(textRenderer, "slot " + data.index, rx + rw/2, infoY + 20, C_DIM);
 
-        int tagY = infoY + 36;
-        if (data.lightLevel > 0) {
-            ctx.fill(rx, tagY, rx + rw, tagY + 12, 0x55FFDD00);
-            ctx.drawCenteredTextWithShadow(textRenderer, "Glow: " + data.lightLevel, rx + rw / 2, tagY + 2, 0xFFFFDD44);
-            tagY += 16;
-        }
-        String hardLabel = data.hardness < 0 ? "Unbreakable" : data.hardness == 0 ? "Instant" :
-                data.hardness <= 0.5f ? "Soft" : data.hardness <= 2.5f ? "Normal" : "Hard";
-        ctx.drawCenteredTextWithShadow(textRenderer, hardLabel + "  |  " + cap(data.soundType), rx + rw / 2, tagY + 2, C_DIM);
+        // Property tags
+        int tagY = infoY + 32;
+        ctx.fill(rx, tagY, rx + rw, tagY + 10, 0x33_FFFFFF);
 
-        if (activePanel == Panel.PROPERTIES) drawPropertiesPanel(ctx, rx, ry, rw);
+        // Glow
+        String glowStr = data.lightLevel > 0 ? "Glow: " + data.lightLevel : "Glow: off";
+        int glowColor  = data.lightLevel > 0 ? C_GLOW_CLR : C_DIM;
+        ctx.drawTextWithShadow(textRenderer, glowStr, rx + 2, tagY + 1, glowColor);
+
+        // Hardness
+        String hardStr = data.hardness < 0 ? "Indestructible"
+                       : data.hardness == 0 ? "Instant break"
+                       : data.hardness <= 0.5f ? "Soft (" + data.hardness + ")"
+                       : data.hardness <= 2.5f ? "Normal (" + data.hardness + ")"
+                       : "Hard (" + data.hardness + ")";
+        ctx.drawTextWithShadow(textRenderer, hardStr, rx + 2, tagY + 12, C_BLUE);
+
+        // Sound
+        ctx.drawTextWithShadow(textRenderer, "Sound: " + cap(data.soundType), rx + 2, tagY + 22, C_ORANGE);
+
+        // Properties panel overlay drawn on top of action buttons area
+        if (activePanel == Panel.PROPERTIES) drawPropertiesPanel(ctx, rx, ry, rw, data);
     }
 
-    private void drawPropertiesPanel(DrawContext ctx, int rx, int ry, int rw) {
-        if (selectedId == null) return;
-        SlotManager.SlotData data = SlotManager.getById(selectedId);
-        if (data == null) return;
-        int propY = ry + 168;
-        ctx.fill(rx - 2, propY - 14, rx + rw + 2, propY + 120, 0xEE111128);
-        ctx.drawBorder(rx - 2, propY - 14, rw + 4, 134, C_BORDER_HI);
-        ctx.drawCenteredTextWithShadow(textRenderer, "Properties", rx + rw / 2, propY - 11, 0xFFAADDFF);
-        ctx.drawTextWithShadow(textRenderer, "Glow: " + data.lightLevel, rx, propY + 6, C_GOLD);
-        ctx.drawTextWithShadow(textRenderer, "Hardness:", rx, propY + 40, C_GOLD);
-        ctx.drawTextWithShadow(textRenderer, "Sound:", rx, propY + 66, C_GOLD);
+    private void drawPropertiesPanel(DrawContext ctx, int rx, int ry, int rw, SlotManager.SlotData data) {
+        int bx = rx - 2;
+        int by = ry + TOP_H + PAD + 16 + 194;
+        int bw = rw + 4;
+        ctx.fill(bx, by - 16, bx + bw, by + 110, 0xEE_0D0D22);
+        ctx.fill(bx, by - 16, bx + bw, by - 15, C_BORDER_HI);
+        ctx.fill(bx, by + 110, bx + bw, by + 111, C_BORDER_HI);
+        ctx.fill(bx, by - 16, bx + 1, by + 111, C_BORDER_HI);
+        ctx.fill(bx + bw - 1, by - 16, bx + bw, by + 111, C_BORDER_HI);
+        ctx.drawCenteredTextWithShadow(textRenderer, "Properties", rx + rw/2, by - 13, 0xFFAADDFF);
+        ctx.drawTextWithShadow(textRenderer, "Glow: " + data.lightLevel + " / 15", rx, by + 1, C_GLOW_CLR);
+        ctx.drawTextWithShadow(textRenderer, "Hardness:", rx, by + 32, C_BLUE);
+        ctx.drawTextWithShadow(textRenderer, "Sound:", rx, by + 58, C_ORANGE);
     }
 
     private void drawActivePanel(DrawContext ctx) {
         if (activePanel == Panel.NONE || activePanel == Panel.PROPERTIES) return;
-        int spY = py + ph - 100;
+        int spY = py + ph - 110;
         int spW = GRID_W + 2;
+
         switch (activePanel) {
             case CREATE -> {
-                ctx.fill(px + PAD - 2, spY - 14, px + PAD + spW, py + ph - 4, 0xEE111128);
-                ctx.drawBorder(px + PAD - 2, spY - 14, spW + 2, 100, C_BORDER_HI);
-                ctx.drawTextWithShadow(textRenderer, "Create New Block", px + PAD, spY - 11, 0xFFAADDFF);
-                ctx.drawTextWithShadow(textRenderer, "ID:", px + PAD, spY - 2, C_GREY);
-                ctx.drawTextWithShadow(textRenderer, "Name:", px + PAD, spY + 20, C_GREY);
+                ctx.fill(px + PAD - 2, spY - 16, px + PAD + spW, py + ph - 4, 0xEE_0D0D22);
+                ctx.fill(px + PAD - 2, spY - 16, px + PAD + spW, spY - 15, C_BORDER_HI);
+                ctx.fill(px + PAD - 2, py + ph - 5, px + PAD + spW, py + ph - 4, C_BORDER_HI);
+                ctx.drawTextWithShadow(textRenderer, "Create New Block", px + PAD, spY - 13, 0xFFAADDFF);
+                ctx.drawTextWithShadow(textRenderer, "ID:",          px + PAD, spY - 2,  C_GREY);
+                ctx.drawTextWithShadow(textRenderer, "Name:",        px + PAD, spY + 20, C_GREY);
                 ctx.drawTextWithShadow(textRenderer, "Texture URL:", px + PAD, spY + 42, C_GREY);
             }
             case RENAME -> {
-                ctx.fill(px + PAD - 2, spY + 8, px + PAD + spW, py + ph - 4, 0xEE111828);
-                ctx.drawBorder(px + PAD - 2, spY + 8, spW + 2, 66, 0xFF44AA44);
+                ctx.fill(px + PAD - 2, spY + 8, px + PAD + spW, py + ph - 4, 0xEE_0D1A0D);
+                ctx.fill(px + PAD - 2, spY + 8, px + PAD + spW, spY + 9, 0xFF44AA44);
                 ctx.drawTextWithShadow(textRenderer, "Rename: " + selectedId, px + PAD, spY + 11, C_GREEN);
                 ctx.drawTextWithShadow(textRenderer, "New name:", px + PAD, spY + 22, C_GREY);
             }
             case RETEXTURE -> {
-                ctx.fill(px + PAD - 2, spY + 8, px + PAD + spW, py + ph - 4, 0xEE181108);
-                ctx.drawBorder(px + PAD - 2, spY + 8, spW + 2, 66, 0xFFAA6622);
-                ctx.drawTextWithShadow(textRenderer, "New Texture: " + selectedId, px + PAD, spY + 11, C_YELLOW);
-                ctx.drawTextWithShadow(textRenderer, "Paste image URL:", px + PAD, spY + 22, C_GREY);
+                ctx.fill(px + PAD - 2, spY + 8, px + PAD + spW, py + ph - 4, 0xEE_1A120D);
+                ctx.fill(px + PAD - 2, spY + 8, px + PAD + spW, spY + 9, C_ORANGE);
+                ctx.drawTextWithShadow(textRenderer, "Change Texture: " + selectedId, px + PAD, spY + 11, C_YELLOW);
+                ctx.drawTextWithShadow(textRenderer, "Image URL:", px + PAD, spY + 22, C_GREY);
             }
         }
     }
 
+    // ── Input ─────────────────────────────────────────────────────────────────
+
     @Override
     public boolean mouseClicked(double mx, double my, int btn) {
         if (activePanel == Panel.NONE || activePanel == Panel.PROPERTIES) {
-            int gx = px + PAD, gy = py + TOP_H, gh = py + ph - 16;
+            int gx = px + PAD;
+            int gy = py + TOP_H + 20;
+            int gh = py + ph - 20;
             if (mx >= gx && mx < gx + GRID_W && my >= gy && my < gh) {
-                int col = ((int) mx - gx) / (CELL + GAP);
-                int row = ((int) my - gy + scroll) / (CELL + GAP);
+                int col = ((int)mx - gx) / (CELL + GAP);
+                int row = ((int)my - gy + scroll) / (CELL + GAP);
                 int idx = row * COLS + col;
                 if (col < COLS && idx >= 0 && idx < filtered.size()) {
-                    selectedId = filtered.get(idx).customId;
+                    String newId = filtered.get(idx).customId;
+                    if (newId.equals(selectedId) && btn == 0) {
+                        // Double-click-like: give on second click when already selected
+                    }
+                    selectedId = newId;
+                    if (activePanel == Panel.PROPERTIES) closePanel();
                     updateButtonStates();
                     return true;
                 }
@@ -311,10 +428,12 @@ public class CustomBlocksScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mx, double my, double hx, double vy) {
-        int rows = (int) Math.ceil(filtered.size() / (double) COLS);
-        int vis  = (ph - TOP_H - 20) / (CELL + GAP);
+        int rows = (int)Math.ceil(filtered.size() / (double)COLS);
+        int gy = py + TOP_H + 20;
+        int gh = py + ph - 20;
+        int vis = (gh - gy) / (CELL + GAP);
         int maxS = Math.max(0, rows - vis) * (CELL + GAP);
-        scroll = (int) Math.max(0, Math.min(maxS, scroll - vy * (CELL + GAP)));
+        scroll = (int)Math.max(0, Math.min(maxS, scroll - vy * (CELL + GAP)));
         return true;
     }
 
@@ -327,8 +446,11 @@ public class CustomBlocksScreen extends Screen {
         return super.keyPressed(key, scan, mods);
     }
 
+    // ── Panel management ──────────────────────────────────────────────────────
+
     private void openPanel(Panel p) {
-        closePanel(); activePanel = p;
+        closePanel();
+        activePanel = p;
         switch (p) {
             case CREATE -> {
                 fldCreateId.setText(""); fldCreateName.setText(""); fldCreateUrl.setText("");
@@ -348,9 +470,11 @@ public class CustomBlocksScreen extends Screen {
                 setFocused(fldRetextureUrl);
             }
             case PROPERTIES -> {
-                for (ButtonWidget b : new ButtonWidget[]{btnGlowMinus,btnGlowPlus,btnHardSoft,btnHardNormal,
-                        btnHardHard,btnHardUnbreak,btnSoundStone,btnSoundWood,btnSoundMetal,
-                        btnSoundGlass,btnSoundGrass,btnPropClose})
+                for (ButtonWidget b : new ButtonWidget[]{
+                        btnGlowMinus, btnGlowPlus,
+                        btnHardInstant, btnHardSoft, btnHardNormal, btnHardHard, btnHardUnbreak,
+                        btnSoundStone, btnSoundWood, btnSoundMetal, btnSoundGlass,
+                        btnSoundGrass, btnSoundSand, btnSoundWool, btnPropClose})
                     addDrawableChild(b);
             }
         }
@@ -358,16 +482,19 @@ public class CustomBlocksScreen extends Screen {
 
     private void closePanel() {
         activePanel = Panel.NONE;
-        // Remove each widget explicitly — Screen.remove() takes Drawable, not Element
-        remove(fldCreateId);    remove(fldCreateName);   remove(fldCreateUrl);
-        remove(btnCreateOk);    remove(btnCreateCancel);
-        remove(fldRenameNew);   remove(btnRenameOk);     remove(btnRenameCancel);
-        remove(fldRetextureUrl);remove(btnRetextureOk);  remove(btnRetextureCancel);
-        remove(btnGlowMinus);   remove(btnGlowPlus);
-        remove(btnHardSoft);    remove(btnHardNormal);   remove(btnHardHard); remove(btnHardUnbreak);
-        remove(btnSoundStone);  remove(btnSoundWood);    remove(btnSoundMetal);
-        remove(btnSoundGlass);  remove(btnSoundGrass);   remove(btnPropClose);
+        remove(fldCreateId);     remove(fldCreateName);    remove(fldCreateUrl);
+        remove(btnCreateOk);     remove(btnCreateCancel);
+        remove(fldRenameNew);    remove(btnRenameOk);      remove(btnRenameCancel);
+        remove(fldRetextureUrl); remove(btnRetextureOk);   remove(btnRetextureCancel);
+        remove(btnGlowMinus);    remove(btnGlowPlus);
+        remove(btnHardInstant);  remove(btnHardSoft);      remove(btnHardNormal);
+        remove(btnHardHard);     remove(btnHardUnbreak);
+        remove(btnSoundStone);   remove(btnSoundWood);     remove(btnSoundMetal);
+        remove(btnSoundGlass);   remove(btnSoundGrass);    remove(btnSoundSand);
+        remove(btnSoundWool);    remove(btnPropClose);
     }
+
+    // ── Actions ───────────────────────────────────────────────────────────────
 
     private void doCreate() {
         String id   = fldCreateId.getText().trim().toLowerCase().replaceAll("[^a-z0-9_]", "_");
@@ -375,13 +502,12 @@ public class CustomBlocksScreen extends Screen {
         String url  = fldCreateUrl.getText().trim();
         if (id.isEmpty())   { status("Enter an ID!", C_RED); return; }
         if (name.isEmpty()) { status("Enter a name!", C_RED); return; }
-        if (url.isEmpty())  { status("Paste a URL!", C_RED); return; }
-        if (SlotManager.hasId(id)) { status("'" + id + "' already exists!", C_RED); return; }
+        if (url.isEmpty())  { status("Paste a texture URL!", C_RED); return; }
+        if (SlotManager.hasId(id))      { status("'" + id + "' already exists!", C_RED); return; }
         if (SlotManager.freeSlots() == 0) { status("All 64 slots are full!", C_RED); return; }
         closePanel();
         status("Downloading...", C_YELLOW);
-        sendCmd("customblock createurl " + id + " " + name.replace(" ", "_") + " " + url);
-        // Don't set selectedId here — wait for server confirmation via SlotUpdatePayload
+        client.player.networkHandler.sendChatCommand("customblock createurl " + id + " " + name.replace(" ", "_") + " " + url);
     }
 
     private void doRename() {
@@ -389,7 +515,7 @@ public class CustomBlocksScreen extends Screen {
         String name = fldRenameNew.getText().trim();
         if (name.isEmpty()) { status("Enter a name!", C_RED); return; }
         closePanel();
-        sendCmd("customblock rename " + selectedId + " " + name.replace(" ", "_"));
+        client.player.networkHandler.sendChatCommand("customblock rename " + selectedId + " " + name.replace(" ", "_"));
         status("Renamed!", C_GREEN);
         rebuildFiltered();
     }
@@ -399,48 +525,59 @@ public class CustomBlocksScreen extends Screen {
         String url = fldRetextureUrl.getText().trim();
         if (url.isEmpty()) { status("Paste a URL!", C_RED); return; }
         closePanel();
-        status("Downloading...", C_YELLOW);
-        sendCmd("customblock retexture " + selectedId + " " + url);
+        status("Downloading texture...", C_YELLOW);
+        client.player.networkHandler.sendChatCommand("customblock retexture " + selectedId + " " + url);
     }
 
-    private void doGive() {
+    private void doGive(int amount) {
         if (selectedId == null) return;
-        sendCmd("customblock give " + selectedId);
-        status("Given to you!", C_GREEN);
+        if (amount == 1)
+            client.player.networkHandler.sendChatCommand("customblock give " + selectedId);
+        else
+            client.player.networkHandler.sendChatCommand("customblock give " + selectedId + " " + amount);
+        status("Given " + amount + "x '" + selectedId + "'!", C_GREEN);
     }
 
     private void doDelete() {
         if (selectedId == null) return;
-        sendCmd("customblock delete " + selectedId);
-        status("Deleted '" + selectedId + "'", C_GREEN);
+        client.player.networkHandler.sendChatCommand("customblock delete " + selectedId);
+        status("Deleted '" + selectedId + "'", C_RED);
         TextureCache.invalidate(selectedId);
         selectedId = null;
         rebuildFiltered();
         updateButtonStates();
     }
 
+    private void doReloadTextures() {
+        TextureCache.invalidateAll();
+        status("Textures cleared — reloading...", C_YELLOW);
+    }
+
     private void adjustGlow(int delta) {
         if (selectedId == null) return;
         SlotManager.SlotData d = SlotManager.getById(selectedId);
         if (d == null) return;
-        int newLevel = Math.max(0, Math.min(15, d.lightLevel + delta));
-        sendCmd("customblock setglow " + selectedId + " " + newLevel);
+        int nv = Math.max(0, Math.min(15, d.lightLevel + delta));
+        client.player.networkHandler.sendChatCommand("customblock setglow " + selectedId + " " + nv);
     }
 
     private void setHard(float val) {
         if (selectedId == null) return;
-        sendCmd("customblock sethardness " + selectedId + " " + val);
+        client.player.networkHandler.sendChatCommand("customblock sethardness " + selectedId + " " + val);
     }
 
     private void setSound(String type) {
         if (selectedId == null) return;
-        sendCmd("customblock setsound " + selectedId + " " + type);
+        client.player.networkHandler.sendChatCommand("customblock setsound " + selectedId + " " + type);
     }
 
-    private void sendCmd(String cmd) {
-        if (client == null || client.player == null) return;
-        client.player.networkHandler.sendChatCommand(cmd);
+    private void setSort(int mode) {
+        if (sortMode == mode) sortAsc = !sortAsc;
+        else { sortMode = mode; sortAsc = true; }
+        rebuildFiltered();
     }
+
+    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private void rebuildFiltered() {
         filtered.clear();
@@ -449,11 +586,20 @@ public class CustomBlocksScreen extends Screen {
             if (q.isEmpty() || d.customId.contains(q) || d.displayName.toLowerCase().contains(q))
                 filtered.add(d);
         }
+        Comparator<SlotManager.SlotData> cmp = switch (sortMode) {
+            case 1 -> Comparator.comparingInt(d -> d.index);
+            case 2 -> Comparator.comparingInt((SlotManager.SlotData d) -> d.lightLevel).reversed();
+            case 3 -> Comparator.comparing(d -> d.soundType);
+            default -> Comparator.comparing(d -> d.displayName.toLowerCase());
+        };
+        if (!sortAsc) cmp = cmp.reversed();
+        filtered.sort(cmp);
     }
 
     private void updateButtonStates() {
         boolean has = selectedId != null && SlotManager.getById(selectedId) != null;
-        btnGive.active = btnRename.active = btnRetexture.active = btnProperties.active = btnDelete.active = has;
+        btnGive.active = btnGiveStack.active = btnRename.active =
+        btnRetexture.active = btnProperties.active = btnDelete.active = has;
     }
 
     private void status(String msg, int color) {

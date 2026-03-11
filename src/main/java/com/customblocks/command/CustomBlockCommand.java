@@ -17,6 +17,7 @@ import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 
+import java.io.File;
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.*;
@@ -93,16 +94,26 @@ public class CustomBlockCommand {
                     )
                 )
 
-                // ── give <id> [player] ───────────────────────────────────────
+                // ── give <id> [amount] [player] ─────────────────────────────
                 .then(CommandManager.literal("give")
                     .executes(ctx -> usage(ctx.getSource(), "give"))
                     .then(CommandManager.argument("id", StringArgumentType.word())
                         .suggests(BLOCK_SUGGESTIONS)
                         .executes(ctx -> cmdGive(ctx.getSource(),
-                            StringArgumentType.getString(ctx, "id"), null))
-                        .then(CommandManager.argument("player", EntityArgumentType.players())
+                            StringArgumentType.getString(ctx, "id"), 1, null))
+                        .then(CommandManager.argument("amount", IntegerArgumentType.integer(1, 64))
                             .executes(ctx -> cmdGive(ctx.getSource(),
                                 StringArgumentType.getString(ctx, "id"),
+                                IntegerArgumentType.getInteger(ctx, "amount"), null))
+                            .then(CommandManager.argument("player", EntityArgumentType.players())
+                                .executes(ctx -> cmdGive(ctx.getSource(),
+                                    StringArgumentType.getString(ctx, "id"),
+                                    IntegerArgumentType.getInteger(ctx, "amount"),
+                                    EntityArgumentType.getPlayers(ctx, "player"))))
+                        )
+                        .then(CommandManager.argument("player", EntityArgumentType.players())
+                            .executes(ctx -> cmdGive(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "id"), 1,
                                 EntityArgumentType.getPlayers(ctx, "player")))
                         )
                     )
@@ -155,6 +166,13 @@ public class CustomBlockCommand {
                         .executes(ctx -> cmdSetTabIcon(ctx.getSource(),
                             StringArgumentType.getString(ctx, "url").trim()))
                     )
+                )
+
+                // ── importfolder ─────────────────────────────────────────────
+                // Reads all PNGs from config/customblocks/import/ on the server.
+                // Filename becomes the block ID (e.g. green_a.png → id=green_a, name=Green A)
+                .then(CommandManager.literal("importfolder")
+                    .executes(ctx -> cmdImportFolder(ctx.getSource()))
                 )
 
                 // ── list ─────────────────────────────────────────────────────
@@ -250,26 +268,26 @@ public class CustomBlockCommand {
         return 1;
     }
 
-    private static int cmdGive(ServerCommandSource src, String id,
+    private static int cmdGive(ServerCommandSource src, String id, int amount,
                                 Collection<ServerPlayerEntity> targets) {
         SlotManager.SlotData d = SlotManager.getById(id);
         if (d == null) { src.sendError(notFound(id)); return 0; }
         SlotBlock.SlotItem item = CustomBlocksMod.SLOT_ITEMS[d.index];
-        ItemStack stack = new ItemStack(item);
+        ItemStack stack = new ItemStack(item, Math.max(1, Math.min(64, amount)));
         if (targets == null || targets.isEmpty()) {
             try {
                 ServerPlayerEntity self = src.getPlayerOrThrow();
                 self.getInventory().insertStack(stack.copy());
-                src.sendMessage(Text.literal("§a[CustomBlocks] Given '" + d.displayName + "' to you."));
+                src.sendMessage(Text.literal("§a[CustomBlocks] Given " + amount + "x '" + d.displayName + "' to you."));
             } catch (Exception ex) {
                 src.sendError(Text.literal("§cRun as a player or specify a target."));
             }
         } else {
             for (ServerPlayerEntity p : targets) {
                 p.getInventory().insertStack(stack.copy());
-                p.sendMessage(Text.literal("§a[CustomBlocks] You received '" + d.displayName + "'."));
+                p.sendMessage(Text.literal("§a[CustomBlocks] You received " + amount + "x '" + d.displayName + "'."));
             }
-            src.sendMessage(Text.literal("§a[CustomBlocks] Gave to " + targets.size() + " player(s)."));
+            src.sendMessage(Text.literal("§a[CustomBlocks] Gave " + amount + "x to " + targets.size() + " player(s)."));
         }
         return 1;
     }
@@ -351,6 +369,91 @@ public class CustomBlockCommand {
         return 1;
     }
 
+    private static int cmdImportFolder(ServerCommandSource src) {
+        File importDir = new File("config/customblocks/import");
+        if (!importDir.exists()) {
+            importDir.mkdirs();
+            src.sendMessage(Text.literal("§e[CustomBlocks] Created import folder: §fconfig/customblocks/import/"));
+            src.sendMessage(Text.literal("§7Drop PNG files in there, then run /customblock importfolder again."));
+            src.sendMessage(Text.literal("§7Filename becomes the block ID (e.g. green_a.png → id=green_a, name=Green A)"));
+            return 1;
+        }
+
+        File[] pngs = importDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".png"));
+        if (pngs == null || pngs.length == 0) {
+            src.sendMessage(Text.literal("§c[CustomBlocks] No PNG files found in config/customblocks/import/"));
+            return 0;
+        }
+
+        int free = SlotManager.freeSlots();
+        if (free == 0) { src.sendError(Text.literal("§cAll 64 slots are full!")); return 0; }
+
+        int toImport = Math.min(pngs.length, free);
+        src.sendMessage(Text.literal("§e[CustomBlocks] Importing " + toImport + " PNG(s) from import folder..."));
+
+        MinecraftServer server = src.getServer();
+
+        // Process each file on a background thread to avoid blocking the server
+        thread(() -> {
+            int success = 0, skipped = 0, failed = 0;
+            for (int i = 0; i < toImport; i++) {
+                File png = pngs[i];
+                // Derive ID and display name from filename (strip .png, spaces→underscore)
+                String rawName = png.getName().replaceAll("(?i)\\.png$", "");
+                String id   = rawName.toLowerCase().replaceAll("[^a-z0-9_]", "_");
+                // Pretty display name: underscores→spaces, each word capitalised
+                String displayName = java.util.Arrays.stream(rawName.replace("_", " ").split(" "))
+                    .map(w -> w.isEmpty() ? w : Character.toUpperCase(w.charAt(0)) + w.substring(1).toLowerCase())
+                    .collect(java.util.stream.Collectors.joining(" "));
+
+                if (SlotManager.hasId(id)) {
+                    final int fi = i; final String fId = id;
+                    server.execute(() -> src.sendMessage(Text.literal(
+                        "§7[CustomBlocks] Skipped '" + fId + "' — already exists.")));
+                    skipped++;
+                    continue;
+                }
+
+                try {
+                    byte[] bytes = java.nio.file.Files.readAllBytes(png.toPath());
+                    final byte[] fBytes = bytes;
+                    final String fId = id, fName = displayName;
+                    final boolean isLast = (i == toImport - 1);
+                    final int fSuccess = success + 1, fSkipped = skipped, fFailed = failed;
+                    server.execute(() -> {
+                        SlotManager.SlotData d = SlotManager.assign(fId, fName, fBytes);
+                        if (d == null) {
+                            src.sendError(Text.literal("§c[CustomBlocks] No free slots for '" + fId + "'!"));
+                            return;
+                        }
+                        SlotManager.saveAll();
+                        CustomBlocksMod.broadcastUpdate(server,
+                            new SlotUpdatePayload("add", d.index, fId, fName, fBytes,
+                                    d.lightLevel, d.hardness, d.soundType));
+                        if (isLast) {
+                            src.sendMessage(Text.literal(
+                                "§a[CustomBlocks] Import done! §f" + fSuccess + " created" +
+                                (fSkipped > 0 ? "§7, " + fSkipped + " skipped" : "") +
+                                (fFailed  > 0 ? "§c, " + fFailed  + " failed"  : "") + "§a."));
+                        }
+                    });
+                    success++;
+                } catch (Exception e) {
+                    final String fId = id;
+                    server.execute(() -> src.sendError(Text.literal(
+                        "§c[CustomBlocks] Failed to read '" + fId + "': " + e.getMessage())));
+                    failed++;
+                }
+            }
+            if (toImport == 0 || (success == 0 && skipped > 0)) {
+                final int fs = skipped;
+                server.execute(() -> src.sendMessage(Text.literal(
+                    "§7[CustomBlocks] Nothing new to import (" + fs + " already existed).")));
+            }
+        });
+        return 1;
+    }
+
     private static int cmdList(ServerCommandSource src) {
         if (SlotManager.usedSlots() == 0) {
             src.sendMessage(Text.literal("§7[CustomBlocks] No blocks. " + SlotManager.freeSlots() + " slots free."));
@@ -372,11 +475,12 @@ public class CustomBlockCommand {
         src.sendMessage(Text.literal("§f/customblock delete <id>  §7delete a block"));
         src.sendMessage(Text.literal("§f/customblock rename <id> <newname>  §7rename"));
         src.sendMessage(Text.literal("§f/customblock retexture <id> <url>  §7change texture"));
-        src.sendMessage(Text.literal("§f/customblock give <id> [player]  §7give block"));
+        src.sendMessage(Text.literal("§f/customblock give <id> [amount] [player]  §7give block (amount 1-64)"));
         src.sendMessage(Text.literal("§f/customblock setglow <id> <0-15>  §7light emission"));
         src.sendMessage(Text.literal("§f/customblock sethardness <id> <val>  §7mining speed (−1=unbreakable)"));
         src.sendMessage(Text.literal("§f/customblock setsound <id> <stone|wood|metal|glass|grass|sand>"));
         src.sendMessage(Text.literal("§f/customblock settabicon <url>  §7set tab icon"));
+        src.sendMessage(Text.literal("§f/customblock importfolder  §7bulk-import PNGs from config/customblocks/import/"));
         src.sendMessage(Text.literal("§f/customblock list  §7list all blocks"));
         src.sendMessage(Text.literal("§7No restarts needed for any command!"));
         return 1;
@@ -389,7 +493,7 @@ public class CustomBlockCommand {
             case "delete"      -> "§cUsage: /customblock delete <id>";
             case "rename"      -> "§cUsage: /customblock rename <id> <newname>";
             case "retexture"   -> "§cUsage: /customblock retexture <id> <url>";
-            case "give"        -> "§cUsage: /customblock give <id> [player]";
+            case "give"        -> "§cUsage: /customblock give <id> [amount 1-64] [player]";
             case "setglow"     -> "§cUsage: /customblock setglow <id> <0-15>";
             case "sethardness" -> "§cUsage: /customblock sethardness <id> <-1 to 50>  (-1=unbreakable)";
             case "setsound"    -> "§cUsage: /customblock setsound <id> <stone|wood|grass|metal|glass|sand|wool>";
