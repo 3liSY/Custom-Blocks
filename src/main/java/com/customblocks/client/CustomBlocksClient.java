@@ -28,6 +28,9 @@ public class CustomBlocksClient implements ClientModInitializer {
 
     @Override
     public void onInitializeClient() {
+        // Load blocks from client's config folder on startup so they match the server
+        CustomBlocksMod.loadBlocksFromConfig();
+
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
             if (!CustomBlocksMod.CUSTOM_BLOCKS.isEmpty()) {
                 ResourcePackGenerator.generate();
