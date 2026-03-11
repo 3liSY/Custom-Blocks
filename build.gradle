@@ -1,62 +1,34 @@
-package com.customblocks.network;
+plugins {
+    id 'fabric-loom' version '1.7.4'
+}
 
-import net.minecraft.network.PacketByteBuf;
-import net.minecraft.network.codec.PacketCodec;
-import net.minecraft.network.packet.CustomPayload;
-import net.minecraft.util.Identifier;
+version = '1.0.0'
+group = 'com.customblocks'
 
-import java.util.ArrayList;
-import java.util.List;
+base {
+    archivesName = 'customblocks'
+}
 
-/** Server → Client on join. Metadata only (textures come via SlotUpdatePayload). */
-public record FullSyncPayload(List<SlotEntry> entries, byte[] tabIconTexture) implements CustomPayload {
+repositories {
+    maven { url 'https://maven.fabricmc.net/' }
+}
 
-    public static final Id<FullSyncPayload> ID =
-            new Id<>(Identifier.of("customblocks", "full_sync"));
+dependencies {
+    minecraft "com.mojang:minecraft:1.21.1"
+    mappings  "net.fabricmc:yarn:1.21.1+build.3:v2"
+    modImplementation "net.fabricmc:fabric-loader:0.16.9"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:0.104.0+1.21.1"
+}
 
-    public record SlotEntry(
-            int    index,
-            String customId,
-            String displayName,
-            byte[] texture,
-            int    lightLevel,
-            float  hardness,
-            String soundType
-    ) {}
+processResources {
+    filteringCharset "UTF-8"
+}
 
-    public static final PacketCodec<PacketByteBuf, FullSyncPayload> CODEC = PacketCodec.of(
-            (value, buf) -> {
-                buf.writeVarInt(value.entries().size());
-                for (SlotEntry e : value.entries()) {
-                    buf.writeVarInt(e.index());
-                    buf.writeString(e.customId());
-                    buf.writeString(e.displayName());
-                    buf.writeByteArray(e.texture() != null ? e.texture() : new byte[0]);
-                    buf.writeVarInt(e.lightLevel());
-                    buf.writeFloat(e.hardness());
-                    buf.writeString(e.soundType() != null ? e.soundType() : "stone");
-                }
-                buf.writeByteArray(value.tabIconTexture() != null ? value.tabIconTexture() : new byte[0]);
-            },
-            buf -> {
-                int size = buf.readVarInt();
-                List<SlotEntry> entries = new ArrayList<>();
-                for (int i = 0; i < size; i++) {
-                    int    index       = buf.readVarInt();
-                    String id          = buf.readString();
-                    String name        = buf.readString();
-                    byte[] tex         = buf.readByteArray();
-                    int    lightLevel  = buf.readVarInt();
-                    float  hardness    = buf.readFloat();
-                    String soundType   = buf.readString();
-                    entries.add(new SlotEntry(index, id, name,
-                            tex.length > 0 ? tex : null, lightLevel, hardness, soundType));
-                }
-                byte[] tabIcon = buf.readByteArray();
-                return new FullSyncPayload(entries, tabIcon.length > 0 ? tabIcon : null);
-            }
-    );
+tasks.withType(JavaCompile).configureEach {
+    it.options.release = 21
+}
 
-    @Override
-    public Id<? extends CustomPayload> getId() { return ID; }
+java {
+    sourceCompatibility = JavaVersion.VERSION_21
+    targetCompatibility = JavaVersion.VERSION_21
 }
