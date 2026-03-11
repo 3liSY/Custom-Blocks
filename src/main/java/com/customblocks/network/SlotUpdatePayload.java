@@ -39,7 +39,7 @@ public record SlotUpdatePayload(
                 int    index       = buf.readVarInt();
                 String id          = buf.readString();
                 String name        = buf.readString();
-                byte[] tex         = buf.readByteArray();
+                byte[] tex         = buf.readByteArray(10_485_760);
                 int    lightLevel  = buf.readVarInt();
                 float  hardness    = buf.readFloat();
                 String soundType   = buf.readString();

@@ -73,13 +73,17 @@ public class CustomBlocksMod implements ModInitializer {
                 FabricItemGroup.builder()
                         .displayName(Text.literal("Custom Blocks"))
                         .icon(() -> {
+                            SlotManager.SlotData icon = SlotManager.getById("tab_icon");
+                            if (icon != null) return new ItemStack(SLOT_ITEMS[icon.index]);
                             for (SlotManager.SlotData d : SlotManager.allSlots())
-                                return new ItemStack(SLOT_ITEMS[d.index]);
+                                if (!d.customId.equals("tab_icon"))
+                                    return new ItemStack(SLOT_ITEMS[d.index]);
                             return new ItemStack(Items.BOOKSHELF);
                         })
                         .entries((ctx, entries) -> {
                             for (SlotManager.SlotData d : SlotManager.allSlots())
-                                entries.add(SLOT_ITEMS[d.index]);
+                                if (!d.customId.equals("tab_icon"))
+                                    entries.add(SLOT_ITEMS[d.index]);
                         })
                         .build()
         );

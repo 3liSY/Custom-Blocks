@@ -325,8 +325,21 @@ public class CustomBlockCommand {
             try {
                 byte[] bytes = download(url);
                 server.execute(() -> {
+                    // Assign or update the reserved "tab_icon" slot
                     SlotManager.setTabIconTexture(bytes);
+                    if (!SlotManager.hasId("tab_icon")) {
+                        SlotManager.assign("tab_icon", "Tab Icon", bytes);
+                    } else {
+                        SlotManager.updateTexture("tab_icon", bytes);
+                    }
                     SlotManager.saveAll();
+                    // Broadcast as both tabicon (for the texture) and add (for the slot)
+                    SlotManager.SlotData d = SlotManager.getById("tab_icon");
+                    if (d != null) {
+                        CustomBlocksMod.broadcastUpdate(server,
+                            new SlotUpdatePayload("add", d.index, "tab_icon", "Tab Icon",
+                                bytes, 0, 1.5f, "stone"));
+                    }
                     CustomBlocksMod.broadcastUpdate(server,
                         new SlotUpdatePayload("tabicon", -1, null, null, bytes, 0, 0, "stone"));
                     src.sendMessage(Text.literal("§a[CustomBlocks] Tab icon updated!"));
@@ -345,7 +358,7 @@ public class CustomBlockCommand {
         }
         src.sendMessage(Text.literal("§e[CustomBlocks] §f" + SlotManager.usedSlots() + " block(s) | §7" + SlotManager.freeSlots() + " free:"));
         for (SlotManager.SlotData d : SlotManager.allSlots()) {
-            String glow  = d.lightLevel > 0 ? " §6✦" + d.lightLevel : "";
+            String glow  = d.lightLevel > 0 ? " §6*" + d.lightLevel : "";
             String hard  = d.hardness < 0 ? " §c∞" : "";
             src.sendMessage(Text.literal("  §f" + d.customId + " §7→ '" + d.displayName + "'" + glow + hard + " §8(slot " + d.index + ")"));
         }

@@ -28,7 +28,10 @@ public class TextureCache {
             int h = image.getHeight();
             NativeImageBackedTexture tex = new NativeImageBackedTexture(image);
             Identifier texId = Identifier.of(CustomBlocksMod.MOD_ID, "dynamic/" + customId);
-            MinecraftClient.getInstance().getTextureManager().registerTexture(texId, tex);
+            // Destroy any previously registered texture at this ID to avoid log warnings
+            var tm = MinecraftClient.getInstance().getTextureManager();
+            try { tm.destroyTexture(texId); } catch (Exception ignored) {}
+            tm.registerTexture(texId, tex);
             TexInfo info = new TexInfo(texId, w, h);
             CACHE.put(customId, info);
             return info;

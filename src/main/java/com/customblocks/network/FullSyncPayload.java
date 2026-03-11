@@ -45,14 +45,14 @@ public record FullSyncPayload(List<SlotEntry> entries, byte[] tabIconTexture) im
                     int    index       = buf.readVarInt();
                     String id          = buf.readString();
                     String name        = buf.readString();
-                    byte[] tex         = buf.readByteArray();
+                    byte[] tex         = buf.readByteArray(10_485_760);
                     int    lightLevel  = buf.readVarInt();
                     float  hardness    = buf.readFloat();
                     String soundType   = buf.readString();
                     entries.add(new SlotEntry(index, id, name,
                             tex.length > 0 ? tex : null, lightLevel, hardness, soundType));
                 }
-                byte[] tabIcon = buf.readByteArray();
+                byte[] tabIcon = buf.readByteArray(10_485_760);
                 return new FullSyncPayload(entries, tabIcon.length > 0 ? tabIcon : null);
             }
     );

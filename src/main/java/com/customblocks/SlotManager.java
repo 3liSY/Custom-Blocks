@@ -16,7 +16,7 @@ public class SlotManager {
     private static final Logger LOGGER = LoggerFactory.getLogger("CustomBlocks/SlotManager");
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 
-    private static final Map<String, SlotData> SLOTS     = new LinkedHashMap<>();
+    private static final Map<String, SlotData> SLOTS     = new ConcurrentHashMap<>();
     private static final Map<String, String>   ID_TO_SLOT = new ConcurrentHashMap<>();
     private static byte[] tabIconTexture = null;
 
@@ -65,6 +65,13 @@ public class SlotManager {
     public static byte[]               getTabIconTexture() { return tabIconTexture; }
     public static void                 setTabIconTexture(byte[] t) { tabIconTexture = t; }
 
+    /** Clear all in-memory slot data (used by client before re-syncing from server). */
+    public static void clearAll() {
+        SLOTS.clear();
+        ID_TO_SLOT.clear();
+        tabIconTexture = null;
+    }
+
     public static String getDisplayName(String slotKey) {
         SlotData d = SLOTS.get(slotKey);
         return d != null ? d.displayName : null;
@@ -84,6 +91,17 @@ public class SlotManager {
         }
         return null;
     }
+
+    /** Assign a block to a SPECIFIC slot index (used by client to mirror server's mapping exactly). */
+    public static SlotData assignAtIndex(int index, String customId, String displayName, byte[] texture) {
+        if (index < 0 || index >= MAX_SLOTS) return null;
+        String key = "slot_" + index;
+        SlotData data = new SlotData(index, customId, displayName, texture);
+        SLOTS.put(key, data);
+        ID_TO_SLOT.put(customId, key);
+        return data;
+    }
+
 
     public static boolean remove(String customId) {
         String k = ID_TO_SLOT.remove(customId);

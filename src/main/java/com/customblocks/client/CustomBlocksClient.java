@@ -16,6 +16,7 @@ import net.fabricmc.fabric.api.client.keybinding.v1.KeyBindingHelper;
 import net.fabricmc.fabric.api.client.networking.v1.ClientPlayNetworking;
 import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.MinecraftClient;
+import net.minecraft.client.gui.screen.ingame.CreativeInventoryScreen;
 import net.minecraft.client.option.KeyBinding;
 import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.util.InputUtil;
@@ -30,12 +31,14 @@ public class CustomBlocksClient implements ClientModInitializer {
     private static final String PACK_ENTRY = "file/customblocks_generated";
     private static final AtomicBoolean reloadScheduled = new AtomicBoolean(false);
 
+    // Set to true after reload — creative tab will refresh on next tick if open
+    public static volatile boolean pendingCreativeRefresh = false;
+
     private static KeyBinding openGuiKey;
 
     @Override
     public void onInitializeClient() {
 
-        // Register B keybind to open GUI
         openGuiKey = KeyBindingHelper.registerKeyBinding(new KeyBinding(
                 "key.customblocks.open_gui",
                 InputUtil.Type.KEYSYM,
@@ -43,51 +46,57 @@ public class CustomBlocksClient implements ClientModInitializer {
                 "category.customblocks"
         ));
 
-        // Load & generate on startup
         ClientLifecycleEvents.CLIENT_STARTED.register(client -> {
             SlotManager.loadFromClientDir(client.runDirectory);
             ResourcePackGenerator.generate(client);
             injectPackIfNeeded(client);
         });
 
-        // Keybind tick
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
+            // Open GUI on B press
             while (openGuiKey.wasPressed()) {
-                if (client.currentScreen == null) {
+                if (client.currentScreen == null)
                     client.setScreen(new CustomBlocksScreen());
-                }
+            }
+
+            // Refresh creative tab when it's open and we have pending updates
+            if (pendingCreativeRefresh && client.player != null
+                    && client.currentScreen instanceof CreativeInventoryScreen) {
+                pendingCreativeRefresh = false;
+                client.setScreen(new CreativeInventoryScreen(
+                        client.player,
+                        client.player.networkHandler.getEnabledFeatures(),
+                        client.options.operatorItemsTab.getValue()
+                ));
             }
         });
 
-        // ── FullSyncPayload: server sends all slot metadata + tab icon on join ──
+        // ── FullSyncPayload ─────────────────────────────────────────────────────
         ClientPlayNetworking.registerGlobalReceiver(FullSyncPayload.ID, (payload, context) -> {
             MinecraftClient client = context.client();
             client.execute(() -> {
-                // Apply all slot metadata (textures arrive separately via SlotUpdatePayload)
+                // Clear stale client-side slots and rebuild from server's authoritative data.
+                // This ensures slot indices always match the server exactly on every join/reconnect.
+                SlotManager.clearAll();
                 for (FullSyncPayload.SlotEntry e : payload.entries()) {
-                    if (SlotManager.getBySlot("slot_" + e.index()) == null) {
-                        SlotManager.assign(e.customId(), e.displayName(), null);
-                    }
-                    // Update properties even if slot already exists
+                    SlotManager.assignAtIndex(e.index(), e.customId(), e.displayName(), null);
                     SlotManager.setProperties(e.customId(), e.lightLevel(), e.hardness(), e.soundType());
                 }
-                if (payload.tabIconTexture() != null) {
+                if (payload.tabIconTexture() != null)
                     SlotManager.setTabIconTexture(payload.tabIconTexture());
-                }
             });
         });
 
-        // ── SlotUpdatePayload: single-slot changes ──────────────────────────────
+        // ── SlotUpdatePayload ───────────────────────────────────────────────────
         ClientPlayNetworking.registerGlobalReceiver(SlotUpdatePayload.ID, (payload, context) -> {
             MinecraftClient client = context.client();
             client.execute(() -> {
                 switch (payload.action()) {
                     case "add" -> {
-                        if (SlotManager.getById(payload.customId()) != null) {
+                        if (SlotManager.getById(payload.customId()) != null)
                             SlotManager.updateTexture(payload.customId(), payload.texture());
-                        } else {
-                            SlotManager.assign(payload.customId(), payload.displayName(), payload.texture());
-                        }
+                        else
+                            SlotManager.assignAtIndex(payload.slotIndex(), payload.customId(), payload.displayName(), payload.texture());
                         SlotManager.setProperties(payload.customId(),
                                 payload.lightLevel(), payload.hardness(), payload.soundType());
                         TextureCache.invalidate(payload.customId());
@@ -101,8 +110,8 @@ public class CustomBlocksClient implements ClientModInitializer {
                         SlotManager.updateTexture(payload.customId(), payload.texture());
                         TextureCache.invalidate(payload.customId());
                     }
-                    case "tabicon"   -> SlotManager.setTabIconTexture(payload.texture());
-                    case "setprop"   -> SlotManager.setProperties(payload.customId(),
+                    case "tabicon" -> SlotManager.setTabIconTexture(payload.texture());
+                    case "setprop" -> SlotManager.setProperties(payload.customId(),
                             payload.lightLevel(), payload.hardness(), payload.soundType());
                 }
                 SlotManager.saveToClientDir(client.runDirectory);
@@ -112,7 +121,7 @@ public class CustomBlocksClient implements ClientModInitializer {
             });
         });
 
-        // ── HUD overlay: show block name when looking at a custom block ─────────
+        // ── HUD overlay: show block name only (no ID) ───────────────────────────
         HudRenderCallback.EVENT.register((ctx, tickCounter) -> {
             MinecraftClient client = MinecraftClient.getInstance();
             if (client.world == null || client.player == null) return;
@@ -124,23 +133,15 @@ public class CustomBlocksClient implements ClientModInitializer {
             SlotManager.SlotData data = SlotManager.getBySlot(sb.getSlotKey());
             if (data == null) return;
 
+            String name = data.displayName;
             int cx = ctx.getScaledWindowWidth() / 2;
-            int w  = client.textRenderer.getWidth(data.displayName) + 10;
+            int w  = client.textRenderer.getWidth(name);
 
-            // Background pill
-            ctx.fill(cx - w / 2 - 2, 40, cx + w / 2 + 2, 54, 0x88000000);
-            ctx.drawBorder(cx - w / 2 - 2, 40, w + 4, 14, 0x44FFFFFF);
-
-            // Block name + ID
-            ctx.drawCenteredTextWithShadow(client.textRenderer,
-                    "§f" + data.displayName + " §7[" + data.customId + "]",
-                    cx, 43, 0xFFFFFF);
+            ctx.fill(cx - w / 2 - 5, 38, cx + w / 2 + 5, 52, 0x88000000);
+            ctx.drawCenteredTextWithShadow(client.textRenderer, name, cx, 42, 0xFFFFFFFF);
         });
     }
 
-    /**
-     * Debounced resource reload — waits 1s after the last packet, then does one reload.
-     */
     private static void scheduleReload(MinecraftClient client) {
         if (reloadScheduled.compareAndSet(false, true)) {
             Thread t = new Thread(() -> {
@@ -148,7 +149,12 @@ public class CustomBlocksClient implements ClientModInitializer {
                 client.execute(() -> {
                     reloadScheduled.set(false);
                     client.reloadResources().thenRun(() ->
-                            CustomBlocksMod.LOGGER.info("[CustomBlocks] Resources reloaded."));
+                        client.execute(() -> {
+                            CustomBlocksMod.LOGGER.info("[CustomBlocks] Resources reloaded.");
+                            // Signal tick handler to refresh creative tab
+                            pendingCreativeRefresh = true;
+                        })
+                    );
                 });
             }, "CustomBlocks-Reload");
             t.setDaemon(true);
