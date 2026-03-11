@@ -168,6 +168,11 @@ public class CustomBlockCommand {
                     )
                 )
 
+                // ── export ───────────────────────────────────────────────────
+                .then(CommandManager.literal("export")
+                    .executes(ctx -> cmdExport(ctx.getSource()))
+                )
+
                 // ── importfolder ─────────────────────────────────────────────
                 // Reads all PNGs from config/customblocks/import/ on the server.
                 // Filename becomes the block ID (e.g. green_a.png → id=green_a, name=Green A)
@@ -197,7 +202,7 @@ public class CustomBlockCommand {
             src.sendError(Text.literal("§c'" + id + "' already exists.")); return 0;
         }
         if (SlotManager.freeSlots() == 0) {
-            src.sendError(Text.literal("§cAll 64 slots are full!")); return 0;
+            src.sendError(Text.literal("§cAll " + SlotManager.MAX_SLOTS + " slots are full!")); return 0;
         }
         src.sendMessage(Text.literal("§e[CustomBlocks] Downloading..."));
         MinecraftServer server = src.getServer();
@@ -373,84 +378,106 @@ public class CustomBlockCommand {
         File importDir = new File("config/customblocks/import");
         if (!importDir.exists()) {
             importDir.mkdirs();
-            src.sendMessage(Text.literal("§e[CustomBlocks] Created import folder: §fconfig/customblocks/import/"));
-            src.sendMessage(Text.literal("§7Drop PNG files in there, then run /customblock importfolder again."));
-            src.sendMessage(Text.literal("§7Filename becomes the block ID (e.g. green_a.png → id=green_a, name=Green A)"));
+            src.sendMessage(Text.literal("\u00a7e[CustomBlocks] Created import folder: \u00a7fconfig/customblocks/import/"));
+            src.sendMessage(Text.literal("\u00a77Drop PNG files in there, then run /customblock importfolder again."));
+            src.sendMessage(Text.literal("\u00a77Filename becomes block ID (e.g. green_a.png = id green_a, name Green A)"));
             return 1;
         }
 
-        File[] pngs = importDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".png"));
-        if (pngs == null || pngs.length == 0) {
-            src.sendMessage(Text.literal("§c[CustomBlocks] No PNG files found in config/customblocks/import/"));
+        File[] allPngs = importDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".png"));
+        if (allPngs == null || allPngs.length == 0) {
+            src.sendMessage(Text.literal("\u00a7c[CustomBlocks] No PNG files found in config/customblocks/import/"));
             return 0;
         }
 
-        int free = SlotManager.freeSlots();
-        if (free == 0) { src.sendError(Text.literal("§cAll 64 slots are full!")); return 0; }
+        java.util.Arrays.sort(allPngs, java.util.Comparator.comparing(File::getName));
 
-        int toImport = Math.min(pngs.length, free);
-        src.sendMessage(Text.literal("§e[CustomBlocks] Importing " + toImport + " PNG(s) from import folder..."));
+        int free = SlotManager.freeSlots();
+        if (free == 0) { src.sendError(Text.literal("\u00a7cAll " + SlotManager.MAX_SLOTS + " slots are full!")); return 0; }
+
+        src.sendMessage(Text.literal("\u00a7e[CustomBlocks] Found " + allPngs.length + " PNG(s), " + free + " slots free. Importing..."));
 
         MinecraftServer server = src.getServer();
 
-        // Process each file on a background thread to avoid blocking the server
         thread(() -> {
-            int success = 0, skipped = 0, failed = 0;
-            for (int i = 0; i < toImport; i++) {
-                File png = pngs[i];
-                // Derive ID and display name from filename (strip .png, spaces→underscore)
-                String rawName = png.getName().replaceAll("(?i)\\.png$", "");
-                String id   = rawName.toLowerCase().replaceAll("[^a-z0-9_]", "_");
-                // Pretty display name: underscores→spaces, each word capitalised
+            java.util.List<String[]> toAdd      = new java.util.ArrayList<>(); // [id, name, (bytes stored separately)]
+            java.util.List<byte[]>   toAddBytes = new java.util.ArrayList<>();
+            java.util.List<String>   skipped    = new java.util.ArrayList<>();
+            java.util.List<String>   failed     = new java.util.ArrayList<>();
+
+            for (File png : allPngs) {
+                String rawName     = png.getName().replaceAll("(?i)\\.png$", "");
+                String id          = rawName.toLowerCase().replaceAll("[^a-z0-9_]", "_");
                 String displayName = java.util.Arrays.stream(rawName.replace("_", " ").split(" "))
                     .map(w -> w.isEmpty() ? w : Character.toUpperCase(w.charAt(0)) + w.substring(1).toLowerCase())
                     .collect(java.util.stream.Collectors.joining(" "));
 
-                if (SlotManager.hasId(id)) {
-                    final int fi = i; final String fId = id;
-                    server.execute(() -> src.sendMessage(Text.literal(
-                        "§7[CustomBlocks] Skipped '" + fId + "' — already exists.")));
-                    skipped++;
-                    continue;
-                }
+                if (SlotManager.hasId(id)) { skipped.add(id); continue; }
+                if (toAdd.size() >= free)  { failed.add(id + "(no free slot)"); continue; }
 
                 try {
                     byte[] bytes = java.nio.file.Files.readAllBytes(png.toPath());
-                    final byte[] fBytes = bytes;
-                    final String fId = id, fName = displayName;
-                    final boolean isLast = (i == toImport - 1);
-                    final int fSuccess = success + 1, fSkipped = skipped, fFailed = failed;
-                    server.execute(() -> {
-                        SlotManager.SlotData d = SlotManager.assign(fId, fName, fBytes);
-                        if (d == null) {
-                            src.sendError(Text.literal("§c[CustomBlocks] No free slots for '" + fId + "'!"));
-                            return;
-                        }
-                        SlotManager.saveAll();
-                        CustomBlocksMod.broadcastUpdate(server,
-                            new SlotUpdatePayload("add", d.index, fId, fName, fBytes,
-                                    d.lightLevel, d.hardness, d.soundType));
-                        if (isLast) {
-                            src.sendMessage(Text.literal(
-                                "§a[CustomBlocks] Import done! §f" + fSuccess + " created" +
-                                (fSkipped > 0 ? "§7, " + fSkipped + " skipped" : "") +
-                                (fFailed  > 0 ? "§c, " + fFailed  + " failed"  : "") + "§a."));
-                        }
-                    });
-                    success++;
+                    toAdd.add(new String[]{id, displayName});
+                    toAddBytes.add(bytes);
                 } catch (Exception e) {
-                    final String fId = id;
-                    server.execute(() -> src.sendError(Text.literal(
-                        "§c[CustomBlocks] Failed to read '" + fId + "': " + e.getMessage())));
-                    failed++;
+                    failed.add(id + "(read error)");
                 }
             }
-            if (toImport == 0 || (success == 0 && skipped > 0)) {
-                final int fs = skipped;
-                server.execute(() -> src.sendMessage(Text.literal(
-                    "§7[CustomBlocks] Nothing new to import (" + fs + " already existed).")));
-            }
+
+            server.execute(() -> {
+                int created = 0;
+                for (int i = 0; i < toAdd.size(); i++) {
+                    String id   = toAdd.get(i)[0];
+                    String name = toAdd.get(i)[1];
+                    byte[] b    = toAddBytes.get(i);
+                    SlotManager.SlotData d = SlotManager.assign(id, name, b);
+                    if (d == null) { failed.add(id + "(slot full)"); continue; }
+                    CustomBlocksMod.broadcastUpdate(server,
+                        new SlotUpdatePayload("add", d.index, id, name, b,
+                                d.lightLevel, d.hardness, d.soundType));
+                    created++;
+                }
+                if (created > 0) SlotManager.saveAll();
+
+                StringBuilder msg = new StringBuilder("\u00a7a[CustomBlocks] Done! \u00a7f" + created + " created");
+                if (!skipped.isEmpty()) msg.append("\u00a77, ").append(skipped.size()).append(" skipped");
+                if (!failed.isEmpty())  msg.append("\u00a7c, ").append(failed.size()).append(" failed");
+                src.sendMessage(Text.literal(msg.toString()));
+                src.sendMessage(Text.literal("\u00a77Slots: " + SlotManager.usedSlots() + " / " + SlotManager.MAX_SLOTS + " used"));
+                if (!failed.isEmpty())
+                    src.sendMessage(Text.literal("\u00a7cFailed: " + String.join(", ", failed)));
+            });
         });
+        return 1;
+    }
+
+    private static int cmdExport(ServerCommandSource src) {
+        File dir = new File("config/customblocks");
+        dir.mkdirs();
+        File out = new File(dir, "export.json");
+        try {
+            com.google.gson.JsonObject root = new com.google.gson.JsonObject();
+            com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
+            for (SlotManager.SlotData d : SlotManager.allSlots()) {
+                com.google.gson.JsonObject e = new com.google.gson.JsonObject();
+                e.addProperty("id",          d.customId);
+                e.addProperty("displayName", d.displayName);
+                e.addProperty("slot",        d.index);
+                e.addProperty("lightLevel",  d.lightLevel);
+                e.addProperty("hardness",    d.hardness);
+                e.addProperty("soundType",   d.soundType);
+                arr.add(e);
+            }
+            root.add("blocks", arr);
+            root.addProperty("totalBlocks", SlotManager.usedSlots());
+            root.addProperty("freeSlots",   SlotManager.freeSlots());
+            try (java.io.FileWriter fw = new java.io.FileWriter(out, java.nio.charset.StandardCharsets.UTF_8)) {
+                new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root, fw);
+            }
+            src.sendMessage(Text.literal("§a[CustomBlocks] Exported " + SlotManager.usedSlots() + " blocks to config/customblocks/export.json"));
+        } catch (Exception e) {
+            src.sendError(Text.literal("§cExport failed: " + e.getMessage()));
+        }
         return 1;
     }
 
@@ -480,7 +507,8 @@ public class CustomBlockCommand {
         src.sendMessage(Text.literal("§f/customblock sethardness <id> <val>  §7mining speed (−1=unbreakable)"));
         src.sendMessage(Text.literal("§f/customblock setsound <id> <stone|wood|metal|glass|grass|sand>"));
         src.sendMessage(Text.literal("§f/customblock settabicon <url>  §7set tab icon"));
-        src.sendMessage(Text.literal("§f/customblock importfolder  §7bulk-import PNGs from config/customblocks/import/"));
+        src.sendMessage(Text.literal("§f/customblock importfolder  §7bulk-import PNGs from config/customblocks/import/"
+        src.sendMessage(Text.literal("§f/customblock export  §7export block list to config/customblocks/export.json"))));
         src.sendMessage(Text.literal("§f/customblock list  §7list all blocks"));
         src.sendMessage(Text.literal("§7No restarts needed for any command!"));
         return 1;
