@@ -1,7 +1,7 @@
 package com.customblocks.client;
 
 import com.customblocks.CustomBlocksMod;
-import com.customblocks.block.CustomBlock;
+import com.customblocks.SlotManager;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
@@ -9,84 +9,88 @@ import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.MinecraftClient;
 
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.StandardCopyOption;
-import java.util.Map;
+import java.io.*;
+import java.nio.file.*;
 
 @Environment(EnvType.CLIENT)
 public class ResourcePackGenerator {
 
-    private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
-    private static final int PACK_FORMAT = 34;
+    private static final Gson   GSON        = new GsonBuilder().setPrettyPrinting().create();
+    private static final int    PACK_FORMAT = 34;
+    private static final String MOD_ID      = CustomBlocksMod.MOD_ID;
 
-    public static void generate() {
-        if (CustomBlocksMod.CUSTOM_BLOCKS.isEmpty()) return;
-
+    public static void generate(MinecraftClient client) {
         try {
-            // Use the actual Minecraft run directory so Lunar Client works too
-            File mcDir = MinecraftClient.getInstance().runDirectory;
-            File packRoot   = new File(mcDir, "resourcepacks/customblocks_generated");
-            File assetsRoot = new File(packRoot, "assets/" + CustomBlocksMod.MOD_ID);
+            File mcDir    = client.runDirectory;
+            File packRoot = new File(mcDir, "resourcepacks/customblocks_generated");
+            File assets   = new File(packRoot, "assets/" + MOD_ID);
 
-            new File(assetsRoot, "blockstates").mkdirs();
-            new File(assetsRoot, "models/block").mkdirs();
-            new File(assetsRoot, "models/item").mkdirs();
-            new File(assetsRoot, "textures/block").mkdirs();
+            new File(assets, "blockstates").mkdirs();
+            new File(assets, "models/block").mkdirs();
+            new File(assets, "models/item").mkdirs();
+            new File(assets, "textures/block").mkdirs();
+            new File(assets, "textures/item").mkdirs();
 
-            JsonObject packInfo = new JsonObject();
-            packInfo.addProperty("pack_format", PACK_FORMAT);
-            packInfo.addProperty("description", "CustomBlocks Generated Resources");
-            JsonObject meta = new JsonObject();
-            meta.add("pack", packInfo);
+            // pack.mcmeta
+            JsonObject pack = new JsonObject(); pack.addProperty("pack_format", PACK_FORMAT);
+            pack.addProperty("description", "CustomBlocks Generated");
+            JsonObject meta = new JsonObject(); meta.add("pack", pack);
             writeJson(meta, new File(packRoot, "pack.mcmeta"));
 
-            for (Map.Entry<String, CustomBlock> entry : CustomBlocksMod.CUSTOM_BLOCKS.entrySet()) {
-                String blockId    = entry.getKey();
-                File   textureSrc = CustomBlocksMod.BLOCK_TEXTURES.get(blockId);
-                if (textureSrc == null || !textureSrc.exists()) continue;
+            for (int i = 0; i < SlotManager.MAX_SLOTS; i++) {
+                String slotKey = "slot_" + i;
+                SlotManager.SlotData data = SlotManager.getBySlot(slotKey);
+                String texRef   = MOD_ID + ":block/" + slotKey;
+                String modelRef = MOD_ID + ":block/" + slotKey;
 
-                String modId      = CustomBlocksMod.MOD_ID;
-                String textureRef = modId + ":block/" + blockId;
-                String modelRef   = modId + ":block/" + blockId;
+                // Texture
+                File texDest = new File(assets, "textures/block/" + slotKey + ".png");
+                if (data != null && data.texture != null && data.texture.length > 0) {
+                    Files.write(texDest.toPath(), data.texture);
+                } else {
+                    Files.write(texDest.toPath(), PLACEHOLDER_PNG);
+                }
 
-                Files.copy(textureSrc.toPath(),
-                        new File(assetsRoot, "textures/block/" + blockId + ".png").toPath(),
-                        StandardCopyOption.REPLACE_EXISTING);
+                // Blockstate
+                JsonObject variant = new JsonObject(); variant.addProperty("model", modelRef);
+                JsonObject variants = new JsonObject(); variants.add("", variant);
+                JsonObject bs = new JsonObject(); bs.add("variants", variants);
+                writeJson(bs, new File(assets, "blockstates/" + slotKey + ".json"));
 
-                JsonObject variant = new JsonObject();
-                variant.addProperty("model", modelRef);
-                JsonObject variants = new JsonObject();
-                variants.add("", variant);
-                JsonObject blockstate = new JsonObject();
-                blockstate.add("variants", variants);
-                writeJson(blockstate, new File(assetsRoot, "blockstates/" + blockId + ".json"));
+                // Block model
+                JsonObject tex = new JsonObject(); tex.addProperty("all", texRef);
+                JsonObject bm = new JsonObject();
+                bm.addProperty("parent", "minecraft:block/cube_all");
+                bm.add("textures", tex);
+                writeJson(bm, new File(assets, "models/block/" + slotKey + ".json"));
 
-                JsonObject textures = new JsonObject();
-                textures.addProperty("all", textureRef);
-                JsonObject blockModel = new JsonObject();
-                blockModel.addProperty("parent", "minecraft:block/cube_all");
-                blockModel.add("textures", textures);
-                writeJson(blockModel, new File(assetsRoot, "models/block/" + blockId + ".json"));
-
-                JsonObject itemModel = new JsonObject();
-                itemModel.addProperty("parent", modelRef);
-                writeJson(itemModel, new File(assetsRoot, "models/item/" + blockId + ".json"));
+                // Item model
+                JsonObject im = new JsonObject(); im.addProperty("parent", modelRef);
+                writeJson(im, new File(assets, "models/item/" + slotKey + ".json"));
             }
 
-            CustomBlocksMod.LOGGER.info("[CustomBlocks] Resource pack generated at: {}", packRoot.getAbsolutePath());
+            // Tab icon
+            byte[] tabIcon = SlotManager.getTabIconTexture();
+            File tabDest = new File(assets, "textures/item/tab_icon.png");
+            Files.write(tabDest.toPath(), tabIcon != null && tabIcon.length > 0 ? tabIcon : PLACEHOLDER_PNG);
 
+            CustomBlocksMod.LOGGER.info("[CustomBlocks] Resource pack generated.");
         } catch (Exception e) {
-            CustomBlocksMod.LOGGER.error("[CustomBlocks] Failed to generate resource pack!", e);
+            CustomBlocksMod.LOGGER.error("[CustomBlocks] Failed to generate resource pack", e);
         }
     }
 
     private static void writeJson(JsonObject json, File dest) throws IOException {
         dest.getParentFile().mkdirs();
-        try (FileWriter fw = new FileWriter(dest)) {
-            GSON.toJson(json, fw);
-        }
+        try (FileWriter fw = new FileWriter(dest)) { GSON.toJson(json, fw); }
     }
+
+    // 1×1 opaque pink placeholder PNG
+    private static final byte[] PLACEHOLDER_PNG = {
+        (byte)0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+        0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x08,0x02,0x00,0x00,0x00,(byte)0x90,0x77,0x53,(byte)0xDE,
+        0x00,0x00,0x00,0x0C,0x49,0x44,0x41,0x54,0x08,(byte)0xD7,0x63,(byte)0xF8,(byte)0x0F,(byte)0xF0,
+        0x00,0x00,0x00,0x02,0x00,0x01,(byte)0xE2,0x21,(byte)0xBC,0x33,0x00,0x00,0x00,0x00,
+        0x49,0x45,0x4E,0x44,(byte)0xAE,0x42,0x60,(byte)0x82
+    };
 }
