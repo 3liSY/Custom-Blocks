@@ -28,7 +28,6 @@ public class CustomBlockCommand {
                 CommandManager.literal("customblock")
                     .requires(src -> src.hasPermissionLevel(2))
 
-                    // /customblock create <id> <name>
                     .then(CommandManager.literal("create")
                         .then(CommandManager.argument("id", StringArgumentType.word())
                             .then(CommandManager.argument("name", StringArgumentType.word())
@@ -45,7 +44,6 @@ public class CustomBlockCommand {
                         )
                     )
 
-                    // /customblock createurl <id> <name> <url>  — URL goes LAST
                     .then(CommandManager.literal("createurl")
                         .then(CommandManager.argument("id", StringArgumentType.word())
                             .then(CommandManager.argument("name", StringArgumentType.word())
@@ -61,6 +59,20 @@ public class CustomBlockCommand {
                         )
                     )
 
+                    .then(CommandManager.literal("settabicon")
+                        .executes(ctx -> {
+                            ctx.getSource().sendError(Text.literal("§cUsage: /customblock settabicon <url>"));
+                            ctx.getSource().sendMessage(Text.literal("§7Example: /customblock settabicon https://i.ibb.co/TjNntKf/Syrian-Rubik-V5.png"));
+                            return 0;
+                        })
+                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
+                            .executes(ctx -> {
+                                String url = StringArgumentType.getString(ctx, "url").trim();
+                                return setTabIcon(ctx.getSource(), url);
+                            })
+                        )
+                    )
+
                     .then(CommandManager.literal("list")
                         .executes(ctx -> listBlocks(ctx.getSource()))
                     )
@@ -72,12 +84,62 @@ public class CustomBlockCommand {
         });
     }
 
+    private static int setTabIcon(ServerCommandSource source, String imageUrl) {
+        source.sendMessage(Text.literal("§e[CustomBlocks] Downloading tab icon..."));
+        MinecraftServer server = source.getServer();
+
+        Thread t = new Thread(() -> {
+            try {
+                HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
+                HttpRequest req = HttpRequest.newBuilder()
+                        .uri(URI.create(imageUrl))
+                        .header("User-Agent", "CustomBlocksMod/1.0")
+                        .timeout(Duration.ofSeconds(15)).build();
+                HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+
+                if (res.statusCode() != 200) {
+                    server.execute(() -> source.sendError(
+                        Text.literal("[CustomBlocks] Download failed. HTTP " + res.statusCode())));
+                    return;
+                }
+
+                byte[] bytes = res.body();
+                File iconFolder = new File("config/customblocks/" + CustomBlocksMod.TAB_ICON_ID);
+                iconFolder.mkdirs();
+                File textureFile = new File(iconFolder, "texture.png");
+                Files.write(textureFile.toPath(), bytes);
+                Files.writeString(new File(iconFolder, "name.txt").toPath(), "Tab Icon");
+
+                server.execute(() -> {
+                    CustomBlockSyncPayload payload = new CustomBlockSyncPayload(
+                        CustomBlocksMod.TAB_ICON_ID, "Tab Icon", bytes);
+                    for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
+                        ServerPlayNetworking.send(player, payload);
+                    }
+                    source.sendMessage(Text.literal("§a[CustomBlocks] Tab icon set! Restart client to see it."));
+                });
+
+            } catch (Exception e) {
+                server.execute(() -> source.sendError(
+                    Text.literal("[CustomBlocks] Error: " + e.getMessage())));
+            }
+        }, "CustomBlocks-TabIcon");
+        t.setDaemon(true);
+        t.start();
+
+        return 1;
+    }
+
     private static int createBlock(ServerCommandSource source, String rawId,
                                    String displayName, String imageUrl) {
         String blockId = rawId.toLowerCase().replaceAll("[^a-z0-9_]", "_");
 
         if (blockId.isEmpty()) {
             source.sendError(Text.literal("[CustomBlocks] Invalid ID: " + rawId));
+            return 0;
+        }
+        if (blockId.equals(CustomBlocksMod.TAB_ICON_ID)) {
+            source.sendError(Text.literal("[CustomBlocks] 'tab_icon' is reserved. Use /customblock settabicon <url>"));
             return 0;
         }
         if (CustomBlocksMod.CUSTOM_BLOCKS.containsKey(blockId)) {
@@ -104,8 +166,7 @@ public class CustomBlockCommand {
 
             Thread t = new Thread(() -> {
                 try {
-                    HttpClient http = HttpClient.newBuilder()
-                            .connectTimeout(Duration.ofSeconds(10)).build();
+                    HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
                     HttpRequest req = HttpRequest.newBuilder()
                             .uri(URI.create(finalUrl))
                             .header("User-Agent", "CustomBlocksMod/1.0")
@@ -151,7 +212,6 @@ public class CustomBlockCommand {
             return;
         }
 
-        // Send texture to all clients — they will register + reload automatically
         CustomBlockSyncPayload payload = new CustomBlockSyncPayload(blockId, displayName, textureBytes);
         for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
             ServerPlayNetworking.send(player, payload);
@@ -176,8 +236,9 @@ public class CustomBlockCommand {
     private static int showHelp(ServerCommandSource source) {
         source.sendMessage(Text.literal("§e=== CustomBlocks ==="));
         source.sendMessage(Text.literal("§f/customblock create <id> <name>"));
-        source.sendMessage(Text.literal("§f/customblock createurl <id> <name> <url>  §7(URL goes LAST)"));
-        source.sendMessage(Text.literal("§7Example: /customblock createurl lava_brick Lava_Brick https://i.imgur.com/abc.png"));
+        source.sendMessage(Text.literal("§f/customblock createurl <id> <name> <url>  §7(URL last)"));
+        source.sendMessage(Text.literal("§f/customblock settabicon <url>  §7(sets the tab icon)"));
+        source.sendMessage(Text.literal("§f/customblock list"));
         source.sendMessage(Text.literal("§aFind blocks in Creative → Custom Blocks tab!"));
         return 1;
     }
