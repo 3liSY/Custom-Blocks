@@ -5,6 +5,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
@@ -165,7 +166,7 @@ public class SlotManager {
             arr.add(e);
         }
         root.add("slots", arr);
-        try (FileWriter fw = new FileWriter(new File(dir, "slots.json"))) {
+        try (FileWriter fw = new FileWriter(new File(dir, "slots.json"), StandardCharsets.UTF_8)) {
             GSON.toJson(root, fw);
         } catch (IOException ex) { LOGGER.error("Failed to save slots.json", ex); }
 
@@ -187,7 +188,7 @@ public class SlotManager {
         File slotsFile = new File(dir, "slots.json");
         if (!slotsFile.exists()) return;
         try {
-            JsonObject root = JsonParser.parseReader(new FileReader(slotsFile)).getAsJsonObject();
+            JsonObject root = JsonParser.parseReader(new FileReader(slotsFile, StandardCharsets.UTF_8)).getAsJsonObject();
             JsonArray slots = root.getAsJsonArray("slots");
             for (JsonElement el : slots) {
                 JsonObject e = el.getAsJsonObject();
@@ -224,7 +225,7 @@ public class SlotManager {
         try {
             SLOTS.clear();
             ID_TO_SLOT.clear();
-            JsonObject root = JsonParser.parseReader(new FileReader(slotsFile)).getAsJsonObject();
+            JsonObject root = JsonParser.parseReader(new FileReader(slotsFile, StandardCharsets.UTF_8)).getAsJsonObject();
             JsonArray slots = root.getAsJsonArray("slots");
             for (JsonElement el : slots) {
                 JsonObject e = el.getAsJsonObject();
@@ -262,7 +263,7 @@ public class SlotManager {
             arr.add(e);
         }
         root.add("slots", arr);
-        try (FileWriter fw = new FileWriter(new File(dir, "slots.json"))) {
+        try (FileWriter fw = new FileWriter(new File(dir, "slots.json"), StandardCharsets.UTF_8)) {
             GSON.toJson(root, fw);
         } catch (IOException ex) { LOGGER.error("Failed to write client slots.json", ex); }
         for (SlotData d : SLOTS.values()) {

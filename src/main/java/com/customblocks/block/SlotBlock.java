@@ -2,12 +2,12 @@ package com.customblocks.block;
 
 import com.customblocks.SlotManager;
 import net.minecraft.block.Block;
-import net.minecraft.block.BlockSoundGroup;
 import net.minecraft.block.BlockState;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
+import net.minecraft.sound.BlockSoundGroup;
 import net.minecraft.text.MutableText;
 import net.minecraft.text.Text;
 import net.minecraft.util.math.BlockPos;
@@ -31,7 +31,6 @@ public class SlotBlock extends Block {
         return Text.literal(name != null ? name : "Custom Block " + slotIndex);
     }
 
-    /** Dynamic sound group — reads from SlotManager at runtime */
     @Override
     public BlockSoundGroup getSoundGroup(BlockState state) {
         SlotManager.SlotData d = SlotManager.getBySlot(getSlotKey());
@@ -47,20 +46,16 @@ public class SlotBlock extends Block {
         };
     }
 
-    /** Dynamic hardness — reads from SlotManager at runtime */
     @Override
     public float calcBlockBreakingDelta(BlockState state, PlayerEntity player, BlockView world, BlockPos pos) {
         SlotManager.SlotData d = SlotManager.getBySlot(getSlotKey());
         float hardness = d != null ? d.hardness : 1.5f;
-        if (hardness < 0) return 0f; // unbreakable
-        if (hardness == 0) return 1f; // instant break
+        if (hardness < 0) return 0f;
+        if (hardness == 0) return 1f;
         float speed = player.getBlockBreakingSpeed(state);
-        // Rough match of vanilla formula
         boolean correctTool = speed > 1.0f;
-        return (correctTool ? speed / hardness / 30f : 1f / hardness / 100f);
+        return correctTool ? speed / hardness / 30f : 1f / hardness / 100f;
     }
-
-    // ── Inner item class ──────────────────────────────────────────────────────
 
     public static class SlotItem extends BlockItem {
         private final int slotIndex;

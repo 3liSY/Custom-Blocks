@@ -227,7 +227,7 @@ public class CustomBlocksScreen extends Screen {
             int pad = 4;
             int tw  = CELL - pad * 2 - 10; // leave room for label
             TextureCache.TexInfo tex = TextureCache.getOrLoad(data.customId, data.texture);
-            ctx.drawTexture(tex.id(), cx + pad, cy + pad, 0, 0, tw, tw, tex.width(), tex.height());
+            ctx.drawTexture(tex.id(), cx + pad, cy + pad, 0.0f, 0.0f, tw, tw, tex.width(), tex.height());
 
             // Glow badge
             if (data.lightLevel > 0) {
@@ -276,7 +276,7 @@ public class CustomBlocksScreen extends Screen {
         int pvY = ry + 30;
         ctx.fill(pvX - 2, pvY - 2, pvX + previewSize + 2, pvY + previewSize + 2, COL_BORDER);
         TextureCache.TexInfo tex = TextureCache.getOrLoad(data.customId, data.texture);
-        ctx.drawTexture(tex.id(), pvX, pvY, 0, 0, previewSize, previewSize, tex.width(), tex.height());
+        ctx.drawTexture(tex.id(), pvX, pvY, 0.0f, 0.0f, previewSize, previewSize, tex.width(), tex.height());
 
         // Info rows
         int infoY = pvY + previewSize + 8;

@@ -10,6 +10,7 @@ import net.fabricmc.api.Environment;
 import net.minecraft.client.MinecraftClient;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.*;
 
 @Environment(EnvType.CLIENT)
@@ -82,7 +83,7 @@ public class ResourcePackGenerator {
 
     private static void writeJson(JsonObject json, File dest) throws IOException {
         dest.getParentFile().mkdirs();
-        try (FileWriter fw = new FileWriter(dest)) { GSON.toJson(json, fw); }
+        try (FileWriter fw = new FileWriter(dest, StandardCharsets.UTF_8)) { GSON.toJson(json, fw); }
     }
 
     // 1×1 opaque pink placeholder PNG

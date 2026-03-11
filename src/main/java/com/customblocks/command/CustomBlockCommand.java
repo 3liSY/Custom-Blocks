@@ -267,7 +267,7 @@ public class CustomBlockCommand {
         } else {
             for (ServerPlayerEntity p : targets) {
                 p.getInventory().insertStack(stack.copy());
-                p.sendMessage(Text.literal("§a[CustomBlocks] You received '" + d.displayName + "'."), false);
+                p.sendMessage(Text.literal("§a[CustomBlocks] You received '" + d.displayName + "'."));
             }
             src.sendMessage(Text.literal("§a[CustomBlocks] Gave to " + targets.size() + " player(s)."));
         }
