@@ -9,7 +9,6 @@ import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.ButtonWidget;
 import net.minecraft.client.gui.widget.TextFieldWidget;
-import net.minecraft.client.util.InputUtil;
 import net.minecraft.item.ItemStack;
 import net.minecraft.text.Text;
 
@@ -228,7 +227,7 @@ public class CustomBlocksScreen extends Screen {
         btnPropClose = mkBtn(bx, propY+96, bw, "Done", b -> closePanel());
     }
 
-    private void reinit() { init(); }
+    private void reinit() { resize(client, this.width, this.height); }
 
     // ── Render ────────────────────────────────────────────────────────────────
     @Override
@@ -433,8 +432,8 @@ public class CustomBlocksScreen extends Screen {
         if (activePanel==Panel.NONE||activePanel==Panel.PROPERTIES) return;
         int spY = py+ph-118;
         int spW = gridW()+2;
-        int bdrColor;
-        String title;
+        int bdrColor = 0;
+        String title = "";
         switch (activePanel) {
             case CREATE -> { bdrColor=cBorderHi(); title="Create New Block"; }
             case RENAME -> { bdrColor=0xFF_44AA44; title="Rename: "+selectedId; }
@@ -662,7 +661,7 @@ public class CustomBlocksScreen extends Screen {
 
     private void doCopyId() {
         if (selectedId==null) return;
-        InputUtil.setClipboardContent(client.getWindow().getHandle(), selectedId);
+        client.keyboard.setClipboard(selectedId);
         status("Copied: "+selectedId,C_GREEN);
     }
 
