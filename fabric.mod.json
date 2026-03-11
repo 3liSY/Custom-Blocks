@@ -17,11 +17,14 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Download Gradle Wrapper JAR
+        run: |
+          mkdir -p gradle/wrapper
+          curl -sL "https://github.com/gradle/gradle/raw/v8.8.0/gradle/wrapper/gradle-wrapper.jar" \
+            -o gradle/wrapper/gradle-wrapper.jar
 
-      - name: Build with Gradle
-        run: gradle build
+      - name: Build
+        run: chmod +x gradlew && ./gradlew build
 
       - name: Upload JAR
         uses: actions/upload-artifact@v4
