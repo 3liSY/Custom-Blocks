@@ -149,7 +149,7 @@ public class CustomBlocksClient implements ClientModInitializer {
     private static void bustItemGroupIconCache() {
         try {
             net.minecraft.item.ItemGroup group =
-                net.minecraft.registry.Registries.ITEM_GROUP.getOptional(CustomBlocksMod.CUSTOM_BLOCKS_TAB).orElse(null);
+                net.minecraft.registry.Registries.ITEM_GROUP.get(CustomBlocksMod.CUSTOM_BLOCKS_TAB);
             if (group == null) return;
             // Try by common Yarn-mapped field names first, then fall back to type scan
             String[] candidates = {"icon", "field_24603", "iconStack"};
