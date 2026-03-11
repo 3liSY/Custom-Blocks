@@ -507,8 +507,8 @@ public class CustomBlockCommand {
         src.sendMessage(Text.literal("§f/customblock sethardness <id> <val>  §7mining speed (−1=unbreakable)"));
         src.sendMessage(Text.literal("§f/customblock setsound <id> <stone|wood|metal|glass|grass|sand>"));
         src.sendMessage(Text.literal("§f/customblock settabicon <url>  §7set tab icon"));
-        src.sendMessage(Text.literal("§f/customblock importfolder  §7bulk-import PNGs from config/customblocks/import/"
-        src.sendMessage(Text.literal("§f/customblock export  §7export block list to config/customblocks/export.json"))));
+        src.sendMessage(Text.literal("§f/customblock importfolder  §7bulk-import PNGs from config/customblocks/import/"));
+        src.sendMessage(Text.literal("§f/customblock export  §7export block list to config/customblocks/export.json"));
         src.sendMessage(Text.literal("§f/customblock list  §7list all blocks"));
         src.sendMessage(Text.literal("§7No restarts needed for any command!"));
         return 1;
