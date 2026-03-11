@@ -10,6 +10,7 @@ import net.fabricmc.fabric.api.itemgroup.v1.FabricItemGroup;
 import net.fabricmc.fabric.api.networking.v1.PayloadTypeRegistry;
 import net.minecraft.block.AbstractBlock;
 import net.minecraft.entity.ItemEntity;
+import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
@@ -36,6 +37,9 @@ public class CustomBlocksMod implements ModInitializer {
     public static final Map<String, CustomBlock> CUSTOM_BLOCKS = new LinkedHashMap<>();
     public static final Map<String, File> BLOCK_TEXTURES = new LinkedHashMap<>();
 
+    public static final String TAB_ICON_ID = "tab_icon";
+    public static CustomBlock TAB_ICON_BLOCK = null;
+
     public static final RegistryKey<net.minecraft.item.ItemGroup> CUSTOM_BLOCKS_TAB =
         RegistryKey.of(RegistryKeys.ITEM_GROUP, Identifier.of(MOD_ID, "blocks"));
 
@@ -47,9 +51,13 @@ public class CustomBlocksMod implements ModInitializer {
         Registry.register(Registries.ITEM_GROUP, CUSTOM_BLOCKS_TAB,
             FabricItemGroup.builder()
                 .displayName(Text.literal("Custom Blocks"))
-                .icon(() -> CUSTOM_BLOCKS.isEmpty()
-                    ? new ItemStack(Items.BOOKSHELF)
-                    : new ItemStack(CUSTOM_BLOCKS.values().iterator().next()))
+                .icon(() -> {
+                    if (TAB_ICON_BLOCK != null)
+                        return new ItemStack(TAB_ICON_BLOCK);
+                    if (!CUSTOM_BLOCKS.isEmpty())
+                        return new ItemStack(CUSTOM_BLOCKS.values().iterator().next());
+                    return new ItemStack(Items.BOOKSHELF);
+                })
                 .entries((context, entries) -> {
                     for (CustomBlock block : CUSTOM_BLOCKS.values()) entries.add(block);
                 })
@@ -88,7 +96,28 @@ public class CustomBlocksMod implements ModInitializer {
                     if (!txt.isEmpty()) displayName = txt;
                 } catch (IOException ignored) {}
             }
+
+            if (blockId.equals(TAB_ICON_ID)) {
+                registerTabIconBlock(folder, textureFile);
+                continue;
+            }
+
             registerBlockInternal(blockId, displayName, folder, textureFile, false);
+        }
+    }
+
+    public static void registerTabIconBlock(File blockFolder, File textureFile) {
+        try {
+            Identifier id = Identifier.of(MOD_ID, TAB_ICON_ID);
+            CustomBlock block = new CustomBlock("Tab Icon", AbstractBlock.Settings.create());
+            BlockItem blockItem = new CustomBlock.CustomBlockItem(block, new Item.Settings());
+            Registry.register(Registries.BLOCK, id, block);
+            Registry.register(Registries.ITEM, id, blockItem);
+            TAB_ICON_BLOCK = block;
+            BLOCK_TEXTURES.put(TAB_ICON_ID, textureFile);
+            LOGGER.info("[CustomBlocks] Tab icon loaded.");
+        } catch (Exception e) {
+            LOGGER.error("[CustomBlocks] Failed to register tab icon block", e);
         }
     }
 
