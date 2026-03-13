@@ -539,16 +539,23 @@ public class CustomBlockCommand {
         return id.toLowerCase().replaceAll("[^a-z0-9_]", "_");
     }
 
+    private static final java.net.http.HttpClient HTTP_CLIENT =
+            java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(10))
+                    .build();
+
     private static byte[] download(String url) throws IOException, InterruptedException {
-        HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("User-Agent", "CustomBlocksMod/1.0")
                 .timeout(Duration.ofSeconds(15)).build();
-        HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+        HttpResponse<byte[]> res = HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofByteArray());
         if (res.statusCode() != 200)
             throw new IOException("HTTP " + res.statusCode());
-        return res.body();
+        byte[] body = res.body();
+        if (body.length > 10_485_760)
+            throw new IOException("Image too large (max 10MB, got " + (body.length / 1024) + "KB)");
+        return body;
     }
 
     private static void thread(Runnable r) {
