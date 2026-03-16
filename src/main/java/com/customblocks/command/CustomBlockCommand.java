@@ -18,7 +18,6 @@ import net.minecraft.command.argument.EntityArgumentType;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.Items;
 import net.minecraft.nbt.NbtCompound;
-import net.minecraft.nbt.NbtList;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
@@ -692,15 +691,20 @@ public class CustomBlockCommand {
     // ── /customblock debugstick ──────────────────────────────────────────────
     private static int cmdDebugStick(ServerCommandSource src, Collection<ServerPlayerEntity> targets) {
         ItemStack stick = new ItemStack(Items.STICK);
-        stick.getOrCreateNbt().putBoolean(RotateStickItem.NBT_KEY, true);
-        stick.setCustomName(Text.literal("§6§lRotate Stick §r§7[CustomBlocks]"));
-        NbtList enchList = new NbtList();
-        NbtCompound enc = new NbtCompound();
-        enc.putString("id", "minecraft:unbreaking");
-        enc.putInt("lvl", 1);
-        enchList.add(enc);
-        stick.getOrCreateNbt().put("StoredEnchantments", enchList);
-        stick.getOrCreateNbt().putInt("HideFlags", 1);
+
+        // 1.21.1 uses DataComponents instead of raw NBT
+        // Mark as rotate stick via CUSTOM_DATA component
+        NbtCompound markerNbt = new NbtCompound();
+        markerNbt.putBoolean(RotateStickItem.NBT_KEY, true);
+        stick.set(net.minecraft.component.DataComponentTypes.CUSTOM_DATA,
+                net.minecraft.component.type.NbtComponent.of(markerNbt));
+
+        // Custom name via CUSTOM_NAME component
+        stick.set(net.minecraft.component.DataComponentTypes.CUSTOM_NAME,
+                Text.literal("§6§lRotate Stick §r§7[CustomBlocks]"));
+
+        // Glint via ENCHANTMENT_GLINT_OVERRIDE component (no fake enchant needed)
+        stick.set(net.minecraft.component.DataComponentTypes.ENCHANTMENT_GLINT_OVERRIDE, true);
 
         if (targets == null || targets.isEmpty()) {
             try {

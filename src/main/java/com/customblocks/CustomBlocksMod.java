@@ -167,8 +167,10 @@ public class CustomBlocksMod implements ModInitializer {
             if (world.isClient()) return net.minecraft.util.ActionResult.PASS;
             net.minecraft.item.ItemStack held = player.getStackInHand(hand);
             if (held.isEmpty()) return net.minecraft.util.ActionResult.PASS;
-            net.minecraft.nbt.NbtCompound nbt = held.getNbt();
-            if (nbt == null || !nbt.getBoolean(com.customblocks.item.RotateStickItem.NBT_KEY))
+            // 1.21.1 uses DataComponents — check custom_data for our rotate stick marker
+            net.minecraft.component.type.NbtComponent customData =
+                held.get(net.minecraft.component.DataComponentTypes.CUSTOM_DATA);
+            if (customData == null || !customData.copyNbt().getBoolean(com.customblocks.item.RotateStickItem.NBT_KEY))
                 return net.minecraft.util.ActionResult.PASS;
             if (!player.hasPermissionLevel(2)) {
                 player.sendMessage(Text.literal("§c[CustomBlocks] You need OP to use the rotate stick."), true);
