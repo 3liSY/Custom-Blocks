@@ -14,6 +14,7 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
       - name: Download Gradle Wrapper JAR
+        working-directory: hangman-mod
         run: |
           mkdir -p gradle/wrapper
           curl -L "https://github.com/gradle/gradle/raw/v8.8.0/gradle/wrapper/gradle-wrapper.jar" \
