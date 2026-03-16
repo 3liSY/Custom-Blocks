@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "itemmap",
+  "version": "1.0.0",
+  "name": "ItemMap",
+  "description": "Display any Minecraft item beautifully in item frames as 2D/3D maps with full customization.",
+  "authors": [ "3liSY and Claude AI" ],
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main":   [ "com.itemmap.ItemMapMod" ],
+    "client": [ "com.itemmap.client.ItemMapClient" ]
+  },
+  "mixins": [ "itemmap.mixins.json" ],
+  "depends": {
+    "fabricloader": ">=0.16.0",
+    "fabric-api":   "*",
+    "minecraft":    "~1.21.1"
+  }
+}
