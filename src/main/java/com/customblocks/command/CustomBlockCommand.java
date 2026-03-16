@@ -439,6 +439,7 @@ public class CustomBlockCommand {
                 }
 
                 // ── Step 2: reload slots.json from disk ──
+                final int finalHealed = healed;
                 server.execute(() -> {
                     SlotManager.loadAll();
 
@@ -446,9 +447,9 @@ public class CustomBlockCommand {
                     File[] pngFiles = configDir.listFiles((dir, n) ->
                             n.toLowerCase().endsWith(".png") &&
                             !n.equals("tab_icon.png") &&
-                            !n.startsWith("slot_") &&  // skip managed slot PNGs
+                            !n.startsWith("slot_") &&
                             !n.equals("export.json"));
-                    int autoImported = 0;
+                    int autoImportedCount = 0;
                     if (pngFiles != null) {
                         Arrays.sort(pngFiles, Comparator.comparing(File::getName));
                         for (File png : pngFiles) {
@@ -461,11 +462,12 @@ public class CustomBlockCommand {
                             try {
                                 byte[] b = Files.readAllBytes(png.toPath());
                                 SlotManager.SlotData d = SlotManager.assign(id, dname, b);
-                                if (d != null) autoImported++;
+                                if (d != null) autoImportedCount++;
                             } catch (IOException ignored) {}
                         }
-                        if (autoImported > 0) SlotManager.saveAll();
+                        if (autoImportedCount > 0) SlotManager.saveAll();
                     }
+                    final int autoImported = autoImportedCount;
 
                     // ── Step 4: build FullSyncPayload (metadata only, no textures) ──
                     List<FullSyncPayload.SlotEntry> meta = new ArrayList<>();
@@ -500,7 +502,7 @@ public class CustomBlockCommand {
                     // ── Report ──
                     StringBuilder msg = new StringBuilder("§a[CustomBlocks] Reload complete — §f")
                             .append(SlotManager.usedSlots()).append(" block(s) loaded");
-                    if (healed       > 0) msg.append("§e, ").append(healed).append(" texture(s) restored to disk");
+                    if (finalHealed  > 0) msg.append("§e, ").append(finalHealed).append(" texture(s) restored to disk");
                     if (autoImported > 0) msg.append("§b, ").append(autoImported).append(" new PNG(s) auto-imported");
                     msg.append("§7. All players re-synced with all images.");
                     src.sendMessage(Text.literal(msg.toString()));
