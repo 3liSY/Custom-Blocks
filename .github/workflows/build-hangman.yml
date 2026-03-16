@@ -8,20 +8,24 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           java-version: '21'
           distribution: 'temurin'
+
       - name: Download Gradle Wrapper JAR
         working-directory: hangman-mod
         run: |
           mkdir -p gradle/wrapper
-          curl -L "https://github.com/gradle/gradle/raw/v8.8.0/gradle/wrapper/gradle-wrapper.jar" \
-            -o gradle/wrapper/gradle-wrapper.jar
-      - name: Build with Gradle
+          wget -q https://raw.githubusercontent.com/gradle/gradle/v8.8.0/gradle/wrapper/gradle-wrapper.jar \
+            -O gradle/wrapper/gradle-wrapper.jar
+
+      - name: Build
         working-directory: hangman-mod
         run: chmod +x gradlew && ./gradlew build
+
       - name: Upload JAR
         uses: actions/upload-artifact@v4
         with:
