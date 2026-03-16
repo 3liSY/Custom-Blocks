@@ -23,7 +23,7 @@ public class VanillaItems {
         return list;
     }
 
-    /** Friendly display name: "diamond_sword" → "Diamond Sword" */
+    /** Friendly display name: "diamond_sword" -> "Diamond Sword" */
     public static String friendlyName(Item item) {
         String path = Registries.ITEM.getId(item).getPath();
         String[] parts = path.split("_");

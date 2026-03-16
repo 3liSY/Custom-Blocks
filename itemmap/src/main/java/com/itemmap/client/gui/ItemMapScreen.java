@@ -179,7 +179,7 @@ public class ItemMapScreen extends Screen {
 
         // Title
         ctx.drawCenteredTextWithShadow(textRenderer,
-            "ItemMap — Frame " + (editing != null ? editing.entityId : "none"),
+            "ItemMap - Frame " + (editing != null ? editing.entityId : "none"),
             cx, py + 7, 0xFFE0A020);
 
         if (editing == null) {

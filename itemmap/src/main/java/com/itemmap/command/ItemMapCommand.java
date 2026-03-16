@@ -582,44 +582,22 @@ public class ItemMapCommand {
 
     private static int cmdTutorial(ServerCommandSource src) {
         src.sendFeedback(() -> Text.literal(
-            "§6§l====== ItemMap Tutorial ======
-" +
-            "§e§lStep 1: §r§fPlace an item frame on a wall.
-" +
-            "§e§lStep 2: §r§fOpen your creative inventory -> §bItem Maps §ftab.
-" +
-            "§e§lStep 3: §r§fFind any item - there are two versions:
-" +
-            "  §7* §fDiamond Sword §7-> flat 2D icon fills the frame
-" +
-            "  §7* §fDiamond Sword 3D §7-> spins like a dropped item
-" +
-            "§e§lStep 4: §r§fPut the map item into the frame.
-" +
-            "  §7It will display the item's texture automatically.
-" +
-            "§e§lStep 5 (optional): §r§fRight-click the frame (empty hand)
-" +
-            "  §7to open the settings GUI and customize:
-" +
-            "  §7scale, spin speed, glow, label, background, and more.
-" +
-            "§e§lCommands quick-reference:
-" +
-            "  §b/im set mode §f<flat2d|render3d|spin3d>
-" +
-            "  §b/im set spinspeed §f<0.1-100>
-" +
-            "  §b/im set scale §f<0.1-2.0>
-" +
-            "  §b/im set glow §f<true|false>
-" +
-            "  §b/im set label §f<text|none>
-" +
-            "  §b/im upload §f<id> §b<url> §7- upload custom image
-" +
-            "  §b/im undo §7/ §b/im redo
-" +
+            "§6§l====== ItemMap Tutorial ======\n" +
+            "§e§lStep 1: §r§fPlace an item frame on a wall.\n" +
+            "§e§lStep 2: §r§fOpen your creative inventory -> §bItem Maps §ftab.\n" +
+            "§e§lStep 3: §r§fFind any item - there are two versions:\n" +
+            "  §7* §fDiamond Sword §7-> flat 2D icon fills the frame\n" +
+            "  §7* §fDiamond Sword 3D §7-> spins like a dropped item\n" +
+            "§e§lStep 4: §r§fPut the map item into the frame.\n" +
+            "  §7It will display the item texture automatically.\n" +
+            "§e§lStep 5: Use commands to customize (see /im help):\n" +
+            "  §b/im set mode §f<flat2d|render3d|spin3d> <frameId>\n" +
+            "  §b/im set spinspeed §f<0.1-100> <frameId>\n" +
+            "  §b/im set scale §f<0.1-2.0> <frameId>\n" +
+            "  §b/im set glow §f<true|false> <frameId>\n" +
+            "  §b/im set label §f<text|none> <frameId>\n" +
+            "  §b/im upload §f<id> <url>\n" +
+            "  §b/im undo §7/ §b/im redo\n" +
             "§6§l=============================="
         ), false);
         return 1;
