@@ -19,8 +19,8 @@ jobs:
         working-directory: hangman-mod
         run: |
           mkdir -p gradle/wrapper
-          wget -q https://raw.githubusercontent.com/gradle/gradle/v8.8.0/gradle/wrapper/gradle-wrapper.jar \
-            -O gradle/wrapper/gradle-wrapper.jar
+          curl -L --output gradle/wrapper/gradle-wrapper.jar \
+            "https://search.maven.org/remotecontent?filepath=org/gradle/gradle-wrapper/8.8/gradle-wrapper-8.8.jar"
 
       - name: Build
         working-directory: hangman-mod

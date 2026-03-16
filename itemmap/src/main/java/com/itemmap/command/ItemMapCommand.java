@@ -13,6 +13,10 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
+import net.minecraft.entity.decoration.ItemFrameEntity;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
@@ -244,17 +248,17 @@ public class ItemMapCommand {
             return null;
         }
         // Cast a ray to find the item frame entity the player is looking at
-        net.minecraft.util.math.Vec3d eyePos = player.getEyePos();
-        net.minecraft.util.math.Vec3d lookVec = player.getRotationVec(1.0f);
-        net.minecraft.util.math.Vec3d reach = eyePos.add(lookVec.multiply(6.0));
-        net.minecraft.util.math.Box searchBox = player.getBoundingBox()
+        Vec3d eyePos = player.getEyePos();
+        Vec3d lookVec = player.getRotationVec(1.0f);
+        Vec3d reach = eyePos.add(lookVec.multiply(6.0));
+        Box searchBox = player.getBoundingBox()
             .stretch(lookVec.multiply(6.0)).expand(1.0);
         ItemFrameEntity closest = null;
         double closest_dist = 7.0;
         for (net.minecraft.entity.Entity e : player.getWorld().getOtherEntities(player, searchBox)) {
             if (!(e instanceof ItemFrameEntity ife)) continue;
-            net.minecraft.util.math.Box bb = ife.getBoundingBox().expand(0.3);
-            java.util.Optional<net.minecraft.util.math.Vec3d> inter = bb.raycast(eyePos, reach);
+            Box bb = ife.getBoundingBox().expand(0.3);
+            java.util.Optional<Vec3d> inter = bb.raycast(eyePos, reach);
             if (inter.isPresent()) {
                 double d = eyePos.squaredDistanceTo(inter.get());
                 if (d < closest_dist) { closest_dist = d; closest = ife; }
