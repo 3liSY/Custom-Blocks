@@ -299,7 +299,7 @@ public class ItemMapCommand {
         if (src.getEntity() instanceof ServerPlayerEntity p)
             UndoManager.push(p.getUuid(), before, frame);
         ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Frame " + frame.entityId + " mode → §f" + mode.name()), false);
+        src.sendFeedback(() -> Text.literal("§a[ItemMap] Frame " + frame.entityId + " mode -> §f" + mode.name()), false);
         return 1;
     }
 
@@ -317,7 +317,7 @@ public class ItemMapCommand {
         if (src.getEntity() instanceof ServerPlayerEntity p)
             UndoManager.push(p.getUuid(), before, frame);
         ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Frame " + frame.entityId + " " + field + " → §f" + value), false);
+        src.sendFeedback(() -> Text.literal("§a[ItemMap] Frame " + frame.entityId + " " + field + " -> §f" + value), false);
         return 1;
     }
 
@@ -334,7 +334,7 @@ public class ItemMapCommand {
         if (src.getEntity() instanceof ServerPlayerEntity p)
             UndoManager.push(p.getUuid(), before, frame);
         ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Frame " + frame.entityId + " " + field + " → §f" + value), false);
+        src.sendFeedback(() -> Text.literal("§a[ItemMap] Frame " + frame.entityId + " " + field + " -> §f" + value), false);
         return 1;
     }
 
@@ -348,7 +348,7 @@ public class ItemMapCommand {
         if (src.getEntity() instanceof ServerPlayerEntity p)
             UndoManager.push(p.getUuid(), before, frame);
         ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Label → §f" + frame.label), false);
+        src.sendFeedback(() -> Text.literal("§a[ItemMap] Label -> §f" + frame.label), false);
         return 1;
     }
 
@@ -386,7 +386,7 @@ public class ItemMapCommand {
         if (src.getEntity() instanceof ServerPlayerEntity p)
             UndoManager.push(p.getUuid(), before, frame);
         ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Custom image → §f" + frame.customImageId), false);
+        src.sendFeedback(() -> Text.literal("§a[ItemMap] Custom image -> §f" + frame.customImageId), false);
         return 1;
     }
 
@@ -582,17 +582,17 @@ public class ItemMapCommand {
 
     private static int cmdTutorial(ServerCommandSource src) {
         src.sendFeedback(() -> Text.literal(
-            "§6§l━━━━━━ ItemMap Tutorial ━━━━━━
+            "§6§l====== ItemMap Tutorial ======
 " +
             "§e§lStep 1: §r§fPlace an item frame on a wall.
 " +
-            "§e§lStep 2: §r§fOpen your creative inventory → §bItem Maps §ftab.
+            "§e§lStep 2: §r§fOpen your creative inventory -> §bItem Maps §ftab.
 " +
-            "§e§lStep 3: §r§fFind any item — there are two versions:
+            "§e§lStep 3: §r§fFind any item - there are two versions:
 " +
-            "  §7• §fDiamond Sword §7→ flat 2D icon fills the frame
+            "  §7* §fDiamond Sword §7-> flat 2D icon fills the frame
 " +
-            "  §7• §fDiamond Sword 3D §7→ spins like a dropped item
+            "  §7* §fDiamond Sword 3D §7-> spins like a dropped item
 " +
             "§e§lStep 4: §r§fPut the map item into the frame.
 " +
@@ -616,26 +616,26 @@ public class ItemMapCommand {
 " +
             "  §b/im set label §f<text|none>
 " +
-            "  §b/im upload §f<id> §b<url> §7— upload custom image
+            "  §b/im upload §f<id> §b<url> §7- upload custom image
 " +
             "  §b/im undo §7/ §b/im redo
 " +
-            "§6§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            "§6§l=============================="
         ), false);
         return 1;
     }
 
     private static int cmdHelp(ServerCommandSource src) {
         src.sendFeedback(() -> Text.literal(
-            "§6§l━━━━━━━━ ItemMap Commands ━━━━━━━━\n" +
+            "§6§l======== ItemMap Commands ========\n" +
             "§7Type §e/im <command> §7to run. All commands need OP.\n" +
             "§7Aliases: §e/im §7and §e/itemmap §7both work.\n" +
             "\n" +
             "§e§lDISPLAY MODE\n" +
             "§e/im set mode <flat2d|render3d|spin3d> <frameId>\n" +
-            "§7  flat2d  §f→ fills the frame with the item's flat 2D texture\n" +
-            "§7  render3d §f→ shows the item as a 3D model, static\n" +
-            "§7  spin3d  §f→ item spins like a dropped item (default for 3D maps)\n" +
+            "§7  flat2d  §f-> fills the frame with the item's flat 2D texture\n" +
+            "§7  render3d §f-> shows the item as a 3D model, static\n" +
+            "§7  spin3d  §f-> item spins like a dropped item (default for 3D maps)\n" +
             "\n" +
             "§e§lSPIN SPEED\n" +
             "§e/im set spinspeed <speed> <frameId>\n" +
@@ -658,13 +658,13 @@ public class ItemMapCommand {
             "\n" +
             "§e§lINVISIBLE FRAME\n" +
             "§e/im set invisible <true|false> <frameId>\n" +
-            "§7  Hides the wooden frame border — only the item shows.\n" +
+            "§7  Hides the wooden frame border - only the item shows.\n" +
             "\n" +
             "§e§lLABEL\n" +
             "§e/im set label <text> <frameId>\n" +
             "§7  Sets a custom name shown below the item. Use underscores for spaces.\n" +
             "§7  Example: §e/im set label My_Cool_Item 12345\n" +
-            "§e/im set label none <frameId> §7— removes the label\n" +
+            "§e/im set label none <frameId> §7- removes the label\n" +
             "\n" +
             "§e§lBACKGROUND COLOR\n" +
             "§e/im set bgcolor <AARRGGBB> <frameId>\n" +
@@ -678,24 +678,24 @@ public class ItemMapCommand {
             "§7  Example: §e/im upload mylogo https://i.imgur.com/abc.png\n" +
             "§e/im set image <imageId> <frameId>\n" +
             "§7  Applies a previously uploaded image to the frame.\n" +
-            "§e/im set image none <frameId> §7— reverts to vanilla item texture\n" +
-            "§e/im images §7— lists all uploaded images and their sizes\n" +
+            "§e/im set image none <frameId> §7- reverts to vanilla item texture\n" +
+            "§e/im images §7- lists all uploaded images and their sizes\n" +
             "\n" +
             "§e§lINFO & MANAGEMENT\n" +
-            "§e/im info <frameId> §7— shows all current settings for a frame\n" +
-            "§e/im list §7— lists all frames that have ItemMap settings applied\n" +
-            "§e/im reset <frameId> §7— resets frame back to all default settings\n" +
-            "§e/im remove <frameId> §7— removes ItemMap data from a frame entirely\n" +
+            "§e/im info <frameId> §7- shows all current settings for a frame\n" +
+            "§e/im list §7- lists all frames that have ItemMap settings applied\n" +
+            "§e/im reset <frameId> §7- resets frame back to all default settings\n" +
+            "§e/im remove <frameId> §7- removes ItemMap data from a frame entirely\n" +
             "\n" +
             "§e§lUNDO / REDO\n" +
-            "§e/im undo §7— undoes your last change (up to 50 steps)\n" +
-            "§e/im redo §7— redoes what you just undid\n" +
+            "§e/im undo §7- undoes your last change (up to 50 steps)\n" +
+            "§e/im redo §7- redoes what you just undid\n" +
             "\n" +
             "§e§lOTHER\n" +
-            "§e/im reload §7— reloads all frame data from disk and re-syncs all players\n" +
-            "§e/im tutorial §7— shows a beginner step-by-step guide\n" +
-            "§e/im help §7— shows this list\n" +
-            "§6§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            "§e/im reload §7- reloads all frame data from disk and re-syncs all players\n" +
+            "§e/im tutorial §7- shows a beginner step-by-step guide\n" +
+            "§e/im help §7- shows this list\n" +
+            "§6§l==================================="
         ), false);
         return 1;
     }
