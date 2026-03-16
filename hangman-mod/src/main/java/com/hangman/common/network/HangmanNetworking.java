@@ -298,7 +298,7 @@ public final class HangmanNetworking {
         writeCharList(buf, game.getWrongLetters());
         writeCharList(buf, game.getGuessedLetters());
         writeStringList(buf, game.getRemovedLimbs());
-        if (hanged != null) send(hanged, S2C_GAME_UPDATE, buf.copy());
+        if (hanged != null) send(hanged, S2C_GAME_UPDATE, buf.retainedDuplicate());
         if (hanger != null) send(hanger, S2C_GAME_UPDATE, buf);
     }
 
@@ -309,7 +309,7 @@ public final class HangmanNetworking {
         String lastLimb = limbs.get(limbs.size() - 1);
         PacketByteBuf buf = newBuf();
         buf.writeString(lastLimb, 32);
-        if (hanged != null) send(hanged, S2C_LIMB_REMOVED, buf.copy());
+        if (hanged != null) send(hanged, S2C_LIMB_REMOVED, buf.retainedDuplicate());
         if (hanger != null) send(hanger, S2C_LIMB_REMOVED, buf);
     }
 

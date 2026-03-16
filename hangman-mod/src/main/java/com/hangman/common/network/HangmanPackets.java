@@ -34,7 +34,7 @@ public final class HangmanPackets {
         private static HangmanPayload read(PacketByteBuf buf) {
             String type = buf.readString(64);
             byte[] bytes = buf.readByteArray();
-            PacketByteBuf inner = net.minecraft.network.PacketByteBufs.create();
+            PacketByteBuf inner = new net.minecraft.network.PacketByteBuf(io.netty.buffer.Unpooled.buffer());
             inner.writeBytes(bytes);
             return new HangmanPayload(type, inner);
         }
@@ -68,7 +68,7 @@ public final class HangmanPackets {
     // ── helpers ───────────────────────────────────────────────────────────────
 
     public static PacketByteBuf newBuf() {
-        return net.minecraft.network.PacketByteBufs.create();
+        return new net.minecraft.network.PacketByteBuf(io.netty.buffer.Unpooled.buffer());
     }
 
     public static void writeCharList(PacketByteBuf buf, Iterable<Character> chars) {

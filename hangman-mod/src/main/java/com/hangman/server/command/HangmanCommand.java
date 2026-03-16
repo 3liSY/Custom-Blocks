@@ -38,7 +38,7 @@ public final class HangmanCommand {
                     try {
                         ServerPlayerEntity player = ctx.getSource().getPlayerOrThrow();
                         // Send a packet to open the main GUI on the client
-                        PacketByteBuf buf = net.minecraft.network.PacketByteBufs.create();
+                        PacketByteBuf buf = new net.minecraft.network.PacketByteBuf(io.netty.buffer.Unpooled.buffer());
                         net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking.send(
                             player,
                             new com.hangman.common.network.HangmanPackets.HangmanPayload("s2c_open_gui", buf));

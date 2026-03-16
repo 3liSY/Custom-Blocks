@@ -21,7 +21,7 @@ public class ServerPlayNetworkHandlerMixin {
         if (!HangmanGameManager.get().isFrozen(player.getUuid())) return;
 
         // Allow head rotation (yaw/pitch changes) but block position changes
-        if (packet.isChangePosition()) {
+        if (packet instanceof PlayerMoveC2SPacket.Full || packet instanceof PlayerMoveC2SPacket.LookAndOnGround) {
             // Cancel positional movement, teleport back to keep client in sync
             ci.cancel();
             player.networkHandler.requestTeleport(
