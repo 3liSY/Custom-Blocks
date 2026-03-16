@@ -162,7 +162,40 @@ public class CustomBlocksMod implements ModInitializer {
         CustomBlockCommand.register();
         SlotManager.loadAll();
 
+        // Rotate stick: handle right-click on blocks
+        net.fabricmc.fabric.api.event.player.UseBlockCallback.EVENT.register((player, world, hand, hitResult) -> {
+            if (world.isClient()) return net.minecraft.util.ActionResult.PASS;
+            net.minecraft.item.ItemStack held = player.getStackInHand(hand);
+            if (held.isEmpty()) return net.minecraft.util.ActionResult.PASS;
+            net.minecraft.nbt.NbtCompound nbt = held.getNbt();
+            if (nbt == null || !nbt.getBoolean(com.customblocks.item.RotateStickItem.NBT_KEY))
+                return net.minecraft.util.ActionResult.PASS;
+            if (!player.hasPermissionLevel(2)) {
+                player.sendMessage(Text.literal("§c[CustomBlocks] You need OP to use the rotate stick."), true);
+                return net.minecraft.util.ActionResult.FAIL;
+            }
+            net.minecraft.util.math.BlockPos pos = hitResult.getBlockPos();
+            net.minecraft.block.BlockState state = world.getBlockState(pos);
+            net.minecraft.block.BlockState rotated = com.customblocks.command.CustomBlockCommand.rotateState(state, player.isSneaking());
+            if (rotated == state) {
+                player.sendMessage(Text.literal("§7[CustomBlocks] This block has no rotatable property."), true);
+                return net.minecraft.util.ActionResult.FAIL;
+            }
+            world.setBlockState(pos, rotated);
+            String dir = com.customblocks.command.CustomBlockCommand.getDirectionLabel(rotated);
+            player.sendMessage(Text.literal("§a[CustomBlocks] Rotated" + (dir.isEmpty() ? "." : " → §f" + dir)), true);
+            return net.minecraft.util.ActionResult.SUCCESS;
+        });
+
         LOGGER.info("[CustomBlocks] Initialized. {} slot(s) loaded.", SlotManager.usedSlots());
+    }
+
+    /** Called by /customblock reload to re-queue textures for an already-online player. */
+    public static void queueTexturesForPlayer(ServerPlayerEntity player,
+            java.util.concurrent.ConcurrentLinkedQueue<SlotUpdatePayload> queue) {
+        UUID uuid = player.getUuid();
+        PENDING_TEXTURES.put(uuid, queue);
+        SEND_DELAY.put(uuid, 20); // 1s head-start so reload command feedback arrives first
     }
 
     public static void broadcastUpdate(MinecraftServer server, SlotUpdatePayload payload) {

@@ -81,9 +81,71 @@ public class CustomBlocksClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(FullSyncPayload.ID, (payload, context) -> {
             MinecraftClient client = context.client();
             client.execute(() -> {
-                // Clear stale data from previous session
+                // Build set of slot keys the server actually has
+                java.util.Set<String> serverSlotKeys = new java.util.HashSet<>();
+                for (FullSyncPayload.SlotEntry e : payload.entries())
+                    serverSlotKeys.add("slot_" + e.index());
+
+                // ── Purge stale client config files not in server's list ──────
+                // This keeps client resource pack perfectly in sync with server config.
+                java.io.File clientConfigDir = new java.io.File(client.runDirectory, "config/customblocks");
+                if (clientConfigDir.exists()) {
+                    java.io.File[] files = clientConfigDir.listFiles();
+                    if (files != null) {
+                        for (java.io.File f : files) {
+                            String name = f.getName();
+                            // Delete slot PNGs whose slot key is no longer on the server
+                            if (name.matches("slot_\\d+\\.png")) {
+                                String slotKey = name.replace(".png", "");
+                                if (!serverSlotKeys.contains(slotKey)) {
+                                    f.delete();
+                                    CustomBlocksMod.LOGGER.info("[CustomBlocks] Purged stale client file: {}", name);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Also purge stale entries from the generated resource pack ──
+                java.io.File packDir = new java.io.File(client.runDirectory,
+                        "resourcepacks/customblocks_generated/assets/customblocks/textures/block");
+                if (packDir.exists()) {
+                    java.io.File[] texFiles = packDir.listFiles();
+                    if (texFiles != null) {
+                        for (java.io.File f : texFiles) {
+                            String name = f.getName();
+                            if (name.matches("slot_\\d+\\.png")) {
+                                String slotKey = name.replace(".png", "");
+                                if (!serverSlotKeys.contains(slotKey)) {
+                                    f.delete();
+                                    CustomBlocksMod.LOGGER.info("[CustomBlocks] Purged stale resource pack texture: {}", name);
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Also purge stale model files from the resource pack
+                java.io.File modelDir = new java.io.File(client.runDirectory,
+                        "resourcepacks/customblocks_generated/assets/customblocks/models/block");
+                if (modelDir.exists()) {
+                    java.io.File[] modelFiles = modelDir.listFiles();
+                    if (modelFiles != null) {
+                        for (java.io.File f : modelFiles) {
+                            String name = f.getName();
+                            if (name.matches("slot_\\d+\\.json")) {
+                                String slotKey = name.replace(".json", "");
+                                if (!serverSlotKeys.contains(slotKey)) {
+                                    f.delete();
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // ── Now load the fresh server state ──────────────────────────
                 SlotManager.clearAll();
-                TextureCache.invalidateAll();  // prevent stale GPU textures after rejoin
+                TextureCache.invalidateAll();
                 for (FullSyncPayload.SlotEntry e : payload.entries()) {
                     SlotManager.assignAtIndex(e.index(), e.customId(), e.displayName(), null);
                     SlotManager.setProperties(e.customId(), e.lightLevel(), e.hardness(), e.soundType());
