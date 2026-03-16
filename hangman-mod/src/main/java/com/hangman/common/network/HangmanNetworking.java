@@ -22,8 +22,6 @@ public final class HangmanNetworking {
 
     private HangmanNetworking() {}
 
-    // ── server-side C2S receiver registration ─────────────────────────────────
-
     public static void registerServerReceivers() {
         ServerPlayNetworking.registerGlobalReceiver(HangmanPayload.ID, (payload, ctx) -> {
             String type = payload.type();
@@ -49,14 +47,10 @@ public final class HangmanNetworking {
                     int x = buf.readInt(), y = buf.readInt(), z = buf.readInt();
                     server.execute(() -> HangmanGameManager.get().spawnGallows(player, new BlockPos(x, y, z)));
                 }
-                case C2S_SAVE_OVERLAY -> {
-                    // Overlay settings are client-only; nothing to process server-side
-                }
+                case C2S_SAVE_OVERLAY -> {}
             }
         });
     }
-
-    // ── C2S handlers ──────────────────────────────────────────────────────────
 
     private static void handleAcceptInvite(ServerPlayerEntity player, MinecraftServer server) {
         HangmanGameManager.get().acceptInvite(player, server);
@@ -70,23 +64,15 @@ public final class HangmanNetworking {
                                           MinecraftServer server) {
         HangmanGame game = HangmanGameManager.get().getGame(player.getUuid());
         if (game == null || game.getPhase() != HangmanGame.Phase.WAITING_FOR_WORD) return;
-
-        // Validate word is not empty
         if (word.isBlank()) {
             player.sendMessage(Text.translatable("hangman.error.word_empty"), false);
             return;
         }
-
         game.setWord(word, category);
-
         ServerPlayerEntity hanged = server.getPlayerManager().getPlayer(game.getHangedId());
         ServerPlayerEntity hanger = server.getPlayerManager().getPlayer(game.getHangerId());
-
-        // Send game start to both players
         if (hanged != null) sendGameStart(hanged, game, true);
         if (hanger != null) sendGameStart(hanger, game, false);
-
-        // Start timer if configured
         HangmanGameManager.get().startTimer(game, server);
     }
 
@@ -106,16 +92,12 @@ public final class HangmanNetworking {
         switch (result) {
             case ALREADY_GUESSED -> player.sendMessage(
                 Text.translatable("hangman.error.already_guessed", letter), false);
-
             case CORRECT -> {
-                broadcastGameMessage(server, game,
-                    Text.translatable("hangman.game.correct", letter));
+                broadcastGameMessage(server, game, Text.translatable("hangman.game.correct", letter));
                 sendGameUpdate(hanged, hanger, game);
-                // Notify client: sound = correct
                 sendSoundEvent(hanged, "correct");
                 sendSoundEvent(hanger, "correct");
             }
-
             case WRONG -> {
                 broadcastGameMessage(server, game,
                     Text.translatable("hangman.game.wrong", letter,
@@ -125,7 +107,6 @@ public final class HangmanNetworking {
                 sendSoundEvent(hanged, "wrong");
                 sendSoundEvent(hanger, "wrong");
             }
-
             case WIN -> {
                 broadcastGameMessage(server, game,
                     Text.translatable("hangman.game.win_hanger",
@@ -135,13 +116,11 @@ public final class HangmanNetworking {
                 awardWin(server, game, true);
                 finishOrNextRound(game, server);
             }
-
             case LOSE -> {
                 broadcastGameMessage(server, game,
                     Text.translatable("hangman.game.win_hanged",
                         hanged != null ? hanged.getName().getString() : "?",
                         game.getSecretWord()));
-                // Place lava
                 if (HangmanConfig.get().placeGLavaOnLoss && hanged != null) {
                     hanged.getServerWorld().setBlockState(
                         hanged.getBlockPos().down(),
@@ -160,21 +139,17 @@ public final class HangmanNetworking {
     private static void handleHintRequest(ServerPlayerEntity player, MinecraftServer server) {
         HangmanGame game = HangmanGameManager.get().getGame(player.getUuid());
         if (game == null || game.getPhase() != HangmanGame.Phase.IN_PROGRESS) return;
-
-        // Deduct XP if required
         int cost = HangmanConfig.get().hintXpCost;
         if (cost > 0 && player.experienceLevel < cost) {
             player.sendMessage(Text.literal("§cNot enough XP for a hint! Cost: " + cost + " levels."), false);
             return;
         }
         if (cost > 0) player.addExperience(-cost);
-
         char revealed = game.useHint();
         if (revealed == '\0') {
             player.sendMessage(Text.literal("§cNo hints available."), false);
             return;
         }
-
         broadcastGameMessage(server, game, Text.translatable("hangman.game.hint_used"));
         ServerPlayerEntity hanged = server.getPlayerManager().getPlayer(game.getHangedId());
         ServerPlayerEntity hanger = server.getPlayerManager().getPlayer(game.getHangerId());
@@ -196,34 +171,21 @@ public final class HangmanNetworking {
         ServerPlayerEntity hanger = server.getPlayerManager().getPlayer(game.getHangerId());
         broadcastGameMessage(server, game, Text.translatable("hangman.game.timer_out"));
         switch (action) {
-            case "WRONG_GUESS" -> {
-                if (hanger != null) handleGuessLetter(hanger, '_', server); // forced wrong
-            }
-            case "HANGED_WINS" -> {
-                // Hanged wins
-                awardWin(server, game, false);
-                HangmanGameManager.get().endGame(game, server);
-            }
-            case "CANCEL" -> HangmanGameManager.get().endGame(game, server);
+            case "WRONG_GUESS" -> { if (hanger != null) handleGuessLetter(hanger, '_', server); }
+            case "HANGED_WINS" -> { awardWin(server, game, false); HangmanGameManager.get().endGame(game, server); }
+            case "CANCEL"      -> HangmanGameManager.get().endGame(game, server);
         }
     }
-
-    // ── reward / stats ────────────────────────────────────────────────────────
 
     private static void awardWin(MinecraftServer server, HangmanGame game, boolean hangerWon) {
         UUID winnerId = hangerWon ? game.getHangerId() : game.getHangedId();
         UUID loserId  = hangerWon ? game.getHangedId() : game.getHangerId();
-
         ServerPlayerEntity winner = server.getPlayerManager().getPlayer(winnerId);
         ServerPlayerEntity loser  = server.getPlayerManager().getPlayer(loserId);
-
         int winXp  = game.getConfig().winnerXp;
         int loseXp = game.getConfig().loserXp;
-
-        if (winner != null && winXp > 0) winner.addExperience(winXp);
+        if (winner != null && winXp  > 0) winner.addExperience(winXp);
         if (loser  != null && loseXp > 0) loser.addExperience(loseXp);
-
-        // Item reward
         String itemReward = game.getConfig().winnerItemReward;
         if (winner != null && itemReward != null && !itemReward.equalsIgnoreCase("none")) {
             try {
@@ -231,19 +193,13 @@ public final class HangmanNetworking {
                 int count = parts.length >= 3 ? Integer.parseInt(parts[2]) : 1;
                 net.minecraft.item.Item item = net.minecraft.registry.Registries.ITEM.get(
                     Identifier.of(parts[0], parts[1]));
-                if (item != Items.AIR) {
-                    winner.giveItemStack(new net.minecraft.item.ItemStack(item, count));
-                }
+                if (item != Items.AIR) winner.giveItemStack(new net.minecraft.item.ItemStack(item, count));
             } catch (Exception ignored) {}
         }
-
-        // Stats
         if (HangmanConfig.get().persistStats) {
             PlayerStats.of(winnerId).recordWin();
             PlayerStats.of(loserId).recordLoss();
         }
-
-        // Sounds
         sendSoundEvent(winner, "win");
         sendSoundEvent(loser, "lose");
     }
@@ -252,7 +208,6 @@ public final class HangmanNetworking {
         HangmanGameManager.get().cancelTimer(game.getHangedId());
         if (game.getCurrentRound() < game.getTotalRounds()) {
             game.nextRound();
-            // Tell word chooser to enter next word
             UUID chooserId = "HANGER".equalsIgnoreCase(game.getConfig().wordChooser)
                 ? game.getHangerId() : game.getHangedId();
             ServerPlayerEntity chooser = server.getPlayerManager().getPlayer(chooserId);
@@ -261,8 +216,6 @@ public final class HangmanNetworking {
             HangmanGameManager.get().endGame(game, server);
         }
     }
-
-    // ── S2C senders ───────────────────────────────────────────────────────────
 
     public static void sendInviteNotification(ServerPlayerEntity invitee, String inviterName) {
         PacketByteBuf buf = newBuf();
@@ -298,7 +251,7 @@ public final class HangmanNetworking {
         writeCharList(buf, game.getWrongLetters());
         writeCharList(buf, game.getGuessedLetters());
         writeStringList(buf, game.getRemovedLimbs());
-        if (hanged != null) send(hanged, S2C_GAME_UPDATE, buf.retainedDuplicate());
+        if (hanged != null) send(hanged, S2C_GAME_UPDATE, new PacketByteBuf(buf.retainedDuplicate()));
         if (hanger != null) send(hanger, S2C_GAME_UPDATE, buf);
     }
 
@@ -309,7 +262,7 @@ public final class HangmanNetworking {
         String lastLimb = limbs.get(limbs.size() - 1);
         PacketByteBuf buf = newBuf();
         buf.writeString(lastLimb, 32);
-        if (hanged != null) send(hanged, S2C_LIMB_REMOVED, buf.retainedDuplicate());
+        if (hanged != null) send(hanged, S2C_LIMB_REMOVED, new PacketByteBuf(buf.retainedDuplicate()));
         if (hanger != null) send(hanger, S2C_LIMB_REMOVED, buf);
     }
 
@@ -336,8 +289,6 @@ public final class HangmanNetworking {
         send(player, S2C_TIMER_SYNC, buf);
     }
 
-    // ── helpers ───────────────────────────────────────────────────────────────
-
     private static void send(ServerPlayerEntity player, String type, PacketByteBuf buf) {
         if (player == null) return;
         ServerPlayNetworking.send(player, new HangmanPayload(type, buf));
@@ -348,11 +299,9 @@ public final class HangmanNetworking {
         ServerPlayerEntity hanger = server.getPlayerManager().getPlayer(game.getHangerId());
         if (hanged != null && HangmanConfig.get().chatMessages) hanged.sendMessage(msg, false);
         if (hanger != null && HangmanConfig.get().chatMessages) hanger.sendMessage(msg, false);
-        // Send to spectators too
         for (UUID sid : HangmanGameManager.get().getSpectatorIds(game)) {
             ServerPlayerEntity spec = server.getPlayerManager().getPlayer(sid);
             if (spec != null) spec.sendMessage(msg, false);
         }
     }
-
 }
