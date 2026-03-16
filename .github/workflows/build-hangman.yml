@@ -17,7 +17,12 @@ jobs:
 
       - name: Download Gradle Wrapper JAR
         working-directory: hangman-mod
-        run: curl -L "https://services.gradle.org/distributions/gradle-8.8-bin.zip" -o gradle-8.8-bin.zip && unzip -jo gradle-8.8-bin.zip "*/lib/gradle-wrapper.jar" -d gradle/wrapper && mv gradle/wrapper/gradle-wrapper.jar gradle/wrapper/gradle-wrapper.jar
+        run: |
+          mkdir -p gradle/wrapper
+          curl -L "https://services.gradle.org/distributions/gradle-8.8-bin.zip" -o gradle.zip
+          unzip -o gradle.zip
+          find . -name "gradle-wrapper.jar" -exec cp {} gradle/wrapper/gradle-wrapper.jar \;
+          rm -rf gradle.zip gradle-8.8
 
       - name: Build
         working-directory: hangman-mod
