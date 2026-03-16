@@ -1,8 +1,7 @@
 package com.itemmap.mixin;
 
 import com.itemmap.client.renderer.FrameRenderManager;
-import com.itemmap.manager.FrameData;
-import com.itemmap.manager.FrameManager;
+import com.itemmap.item.ItemMapItem;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.MinecraftClient;
@@ -11,9 +10,11 @@ import net.minecraft.client.render.*;
 import net.minecraft.client.render.entity.EntityRenderer;
 import net.minecraft.client.render.entity.EntityRendererFactory;
 import net.minecraft.client.render.entity.ItemFrameEntityRenderer;
+import net.minecraft.client.render.model.json.ModelTransformationMode;
 import net.minecraft.client.util.math.MatrixStack;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.decoration.ItemFrameEntity;
+import net.minecraft.item.Item;
 import net.minecraft.item.ItemStack;
 import net.minecraft.registry.Registries;
 import net.minecraft.util.Identifier;
@@ -26,193 +27,124 @@ import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
 @Environment(EnvType.CLIENT)
 @Mixin(ItemFrameEntityRenderer.class)
-public abstract class ItemFrameRendererMixin
-        extends EntityRenderer<ItemFrameEntity> {
+public abstract class ItemFrameRendererMixin extends EntityRenderer<ItemFrameEntity> {
 
     protected ItemFrameRendererMixin(EntityRendererFactory.Context ctx) { super(ctx); }
 
-    /**
-     * Inject BEFORE the vanilla item render inside the frame.
-     * If we have FrameData for this frame, we render our custom version and cancel vanilla.
-     */
     @Inject(
         method = "render(Lnet/minecraft/entity/Entity;FFLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;I)V",
         at = @At("HEAD"),
         cancellable = true
     )
-    private void onRender(net.minecraft.entity.Entity entity, float yaw, float tickDelta,
+    private void onRender(Entity entity, float yaw, float tickDelta,
                           MatrixStack matrices, VertexConsumerProvider vcp,
                           int light, CallbackInfo ci) {
 
         if (!(entity instanceof ItemFrameEntity frame)) return;
         ItemStack held = frame.getHeldItemStack();
         if (held == null || held.isEmpty()) return;
+        if (!(held.getItem() instanceof ItemMapItem)) return;
 
-        FrameData data = FrameManager.get(frame.getId());
-        if (data == null) return; // No ItemMap data — let vanilla render
+        // Get target item
+        String targetId = ItemMapItem.getTargetId(held);
+        if (targetId == null) return;
+        boolean is3D = ItemMapItem.is3D(held);
 
-        ci.cancel(); // We're taking over rendering
+        ci.cancel(); // Take over rendering entirely
 
         matrices.push();
 
-        // Handle invisible frame — don't render the frame itself
-        if (!data.invisible) {
-            renderFrameBase(frame, matrices, vcp, light);
-        }
+        // Render the wooden frame border
+        renderWoodenFrame(matrices, vcp, light);
 
-        // Translate slightly in front of frame face
-        matrices.translate(0, 0, 0.0625f);
+        // Move slightly in front of frame face
+        matrices.translate(0, 0, 0.078125f);
 
-        // Apply scale
-        float s = data.scale;
-        matrices.scale(s, s, s);
+        // Get or create spin angle for this frame
+        float spinAngle = FrameRenderManager.getSpinAngle(frame.getId(), is3D);
 
-        // Apply padding
-        if (data.padPct > 0) {
-            float p = 1f - (data.padPct / 100f);
-            matrices.scale(p, p, p);
-        }
-
-        switch (data.mode) {
-            case FLAT_2D  -> renderFlat2D(frame, held, data, matrices, vcp, light);
-            case RENDER_3D -> renderStatic3D(frame, held, data, matrices, vcp, light, tickDelta);
-            case SPIN_3D   -> renderSpin3D(frame, held, data, matrices, vcp, light, tickDelta);
-        }
-
-        // Render label if set
-        if (data.label != null && !data.label.isEmpty()) {
-            renderLabel(data.label, matrices, vcp, light);
+        if (is3D) {
+            render3DSpin(targetId, spinAngle, matrices, vcp, light);
         } else {
-            // Use item's translation key name
-            String name = held.getName().getString();
-            renderLabel(name, matrices, vcp, light);
+            renderFlat2D(targetId, matrices, vcp, light);
         }
 
-        // Glow outline
-        if (data.glowing) {
-            renderGlowOutline(frame, held, data, matrices, vcp);
-        }
+        // Label: item name (or "X 3D")
+        String label = held.getName().getString();
+        renderLabel(label, matrices, vcp, light);
 
         matrices.pop();
     }
 
-    // ── Render methods ────────────────────────────────────────────────────────
+    // ── Flat 2D: fill the frame with the item's sprite texture ────────────────
 
-    private void renderFlat2D(ItemFrameEntity frame, ItemStack held, FrameData data,
-                               MatrixStack matrices, VertexConsumerProvider vcp, int light) {
-        Identifier texId = resolveTexture(held, data);
-        if (texId == null) {
-            // Fallback: render vanilla item
-            renderVanillaItem(held, matrices, vcp, light);
-            return;
-        }
-
-        // Render background if set
-        if ((data.bgColor >>> 24) > 0) {
-            renderColoredQuad(matrices, vcp, data.bgColor, -0.5f, -0.5f, 1f, 1f, light);
-        }
-
-        // Render the 2D texture filling the frame
+    private void renderFlat2D(String targetId, MatrixStack matrices,
+                               VertexConsumerProvider vcp, int light) {
+        Identifier texId = resolveItemTexture(targetId);
+        if (texId == null) return;
+        // Fill entire frame face (-0.5 to 0.5)
         renderTexturedQuad(matrices, vcp, texId, -0.5f, -0.5f, 1f, 1f, light);
     }
 
-    private void renderStatic3D(ItemFrameEntity frame, ItemStack held, FrameData data,
-                                 MatrixStack matrices, VertexConsumerProvider vcp,
-                                 int light, float tickDelta) {
-        matrices.scale(0.5f, 0.5f, 0.5f);
-        renderVanillaItem(held, matrices, vcp, light);
-    }
+    // ── 3D Spin: render item rotating like a dropped entity ───────────────────
 
-    private void renderSpin3D(ItemFrameEntity frame, ItemStack held, FrameData data,
-                               MatrixStack matrices, VertexConsumerProvider vcp,
-                               int light, float tickDelta) {
-        // Smooth spin angle interpolation
-        float angle = data.spinAngle + data.spinSpeed * tickDelta;
-        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(angle));
-        matrices.scale(0.5f, 0.5f, 0.5f);
-        renderVanillaItem(held, matrices, vcp, light);
-    }
-
-    private void renderVanillaItem(ItemStack held, MatrixStack matrices,
-                                    VertexConsumerProvider vcp, int light) {
+    private void render3DSpin(String targetId, float spinAngle,
+                               MatrixStack matrices, VertexConsumerProvider vcp, int light) {
         MinecraftClient mc = MinecraftClient.getInstance();
-        if (mc == null || mc.getItemRenderer() == null) return;
-        mc.getItemRenderer().renderItem(held,
-            net.minecraft.client.render.model.json.ModelTransformationMode.FIXED,
-            light, OverlayTexture.DEFAULT_UV, matrices, vcp, mc.world, 0);
+        if (mc == null) return;
+
+        // Resolve item
+        Item item = Registries.ITEM.get(Identifier.of(targetId));
+        if (item == null) return;
+        ItemStack renderStack = new ItemStack(item);
+
+        matrices.push();
+        // Spin around Y axis — same as dropped item bobbing
+        matrices.multiply(RotationAxis.POSITIVE_Y.rotationDegrees(spinAngle));
+        // Scale to fit nicely in frame
+        matrices.scale(0.6f, 0.6f, 0.6f);
+        mc.getItemRenderer().renderItem(
+            renderStack,
+            ModelTransformationMode.GROUND,
+            light,
+            OverlayTexture.DEFAULT_UV,
+            matrices, vcp, mc.world, 0
+        );
+        matrices.pop();
     }
 
-    private void renderFrameBase(ItemFrameEntity frame, MatrixStack matrices,
-                                  VertexConsumerProvider vcp, int light) {
-        // Let vanilla render just the frame part (not the item)
-        // We call super but that would cause recursion, so we just skip —
-        // the frame block model is rendered by the block renderer, not entity renderer.
-        // Item frames in MC are entities whose renderer handles BOTH the frame AND the item.
-        // We'll render a simple dark border quad as the frame.
-        renderColoredQuad(matrices, vcp, 0xFF5A3A1A, -0.5625f, -0.5625f, 1.125f, 1.125f, light);
+    // ── Frame border ──────────────────────────────────────────────────────────
+
+    private void renderWoodenFrame(MatrixStack matrices, VertexConsumerProvider vcp, int light) {
+        // Oak log brown border, slightly larger than the item area
+        int brown = 0xFF6B4226;
+        renderColoredQuad(matrices, vcp, brown, -0.5625f, -0.5625f, 1.125f, 1.125f, light);
+        // Slightly lighter inner border
+        int tan = 0xFFC8A96E;
+        renderColoredQuad(matrices, vcp, tan, -0.5f, -0.5f, 1f, 1f, light);
     }
 
     // ── Texture resolution ────────────────────────────────────────────────────
 
-    private Identifier resolveTexture(ItemStack held, FrameData data) {
-        // 1. Custom uploaded image
-        if (data.customImageId != null) {
-            Identifier id = FrameRenderManager.getImageTexture(data.customImageId);
-            if (id != null) return id;
-        }
-        // 2. Vanilla item texture
-        String path = Registries.ITEM.getId(held.getItem()).getPath();
+    private Identifier resolveItemTexture(String itemId) {
+        // Check for custom uploaded image first
+        Identifier custom = FrameRenderManager.getCustomTexture(itemId);
+        if (custom != null) return custom;
+        // Vanilla item texture path
+        String path = itemId.contains(":") ? itemId.split(":")[1] : itemId;
         return Identifier.of("minecraft", "textures/item/" + path + ".png");
     }
 
-    // ── Low-level quad rendering ──────────────────────────────────────────────
-
-    private void renderTexturedQuad(MatrixStack matrices, VertexConsumerProvider vcp,
-                                     Identifier texture,
-                                     float x, float y, float w, float h, int light) {
-        VertexConsumer vc = vcp.getBuffer(RenderLayer.getEntityTranslucentCull(texture));
-        Matrix4f m = matrices.peek().getPositionMatrix();
-        // Two triangles forming a quad (CCW winding)
-        // TL, BL, BR, TR
-        vc.vertex(m, x,     y + h, 0).color(255,255,255,255).texture(0,1).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
-        vc.vertex(m, x + w, y + h, 0).color(255,255,255,255).texture(1,1).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
-        vc.vertex(m, x + w, y,     0).color(255,255,255,255).texture(1,0).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
-        vc.vertex(m, x,     y,     0).color(255,255,255,255).texture(0,0).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
-    }
-
-    private static final Identifier WHITE_TEX = Identifier.of("minecraft", "textures/misc/white.png");
-
-    private void renderColoredQuad(MatrixStack matrices, VertexConsumerProvider vcp,
-                                    int argb, float x, float y, float w, float h, int light) {
-        int a = (argb >> 24) & 0xFF;
-        int r = (argb >> 16) & 0xFF;
-        int g = (argb >> 8)  & 0xFF;
-        int b = argb         & 0xFF;
-        if (a == 0) return;
-        VertexConsumer vc = vcp.getBuffer(RenderLayer.getEntityTranslucentCull(WHITE_TEX));
-        Matrix4f m = matrices.peek().getPositionMatrix();
-        vc.vertex(m, x,     y + h, 0).color(r,g,b,a).texture(0,1).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
-        vc.vertex(m, x + w, y + h, 0).color(r,g,b,a).texture(1,1).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
-        vc.vertex(m, x + w, y,     0).color(r,g,b,a).texture(1,0).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
-        vc.vertex(m, x,     y,     0).color(r,g,b,a).texture(0,0).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
-    }
-
-    private void renderGlowOutline(ItemFrameEntity frame, ItemStack held, FrameData data,
-                                    MatrixStack matrices, VertexConsumerProvider vcp) {
-        // Render a slightly larger bright quad as glow
-        renderColoredQuad(matrices, vcp, 0x66FFFF00, -0.52f, -0.52f, 1.04f, 1.04f,
-            LightmapTextureManager.MAX_LIGHT_COORDINATE);
-    }
+    // ── Label ─────────────────────────────────────────────────────────────────
 
     private void renderLabel(String text, MatrixStack matrices,
                               VertexConsumerProvider vcp, int light) {
         matrices.push();
-        matrices.translate(0, -0.6f, 0.01f);
-        matrices.scale(0.025f, 0.025f, 0.025f);
+        matrices.translate(0, -0.62f, 0.01f);
+        matrices.scale(0.022f, 0.022f, 0.022f);
         TextRenderer tr = MinecraftClient.getInstance().textRenderer;
         if (tr == null) { matrices.pop(); return; }
-        int w = tr.getWidth(text);
-        // Background
+        float w = tr.getWidth(text);
         tr.drawWithOutline(
             net.minecraft.text.Text.literal(text).asOrderedText(),
             -w / 2f, -4f,
@@ -220,5 +152,35 @@ public abstract class ItemFrameRendererMixin
             matrices.peek().getPositionMatrix(), vcp, light
         );
         matrices.pop();
+    }
+
+    // ── Quad rendering ────────────────────────────────────────────────────────
+
+    private void renderTexturedQuad(MatrixStack matrices, VertexConsumerProvider vcp,
+                                     Identifier texture,
+                                     float x, float y, float w, float h, int light) {
+        VertexConsumer vc = vcp.getBuffer(RenderLayer.getEntityTranslucentCull(texture));
+        Matrix4f m = matrices.peek().getPositionMatrix();
+        vc.vertex(m, x,     y+h, 0).color(255,255,255,255).texture(0,1).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
+        vc.vertex(m, x+w,   y+h, 0).color(255,255,255,255).texture(1,1).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
+        vc.vertex(m, x+w,   y,   0).color(255,255,255,255).texture(1,0).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
+        vc.vertex(m, x,     y,   0).color(255,255,255,255).texture(0,0).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
+    }
+
+    private static final Identifier WHITE_TEX =
+        Identifier.of("minecraft", "textures/misc/white.png");
+
+    private void renderColoredQuad(MatrixStack matrices, VertexConsumerProvider vcp,
+                                    int argb, float x, float y, float w, float h, int light) {
+        int a = (argb >> 24) & 0xFF; if (a == 0) return;
+        int r = (argb >> 16) & 0xFF;
+        int g = (argb >> 8)  & 0xFF;
+        int b = argb         & 0xFF;
+        VertexConsumer vc = vcp.getBuffer(RenderLayer.getEntityTranslucentCull(WHITE_TEX));
+        Matrix4f m = matrices.peek().getPositionMatrix();
+        vc.vertex(m, x,   y+h, 0).color(r,g,b,a).texture(0,1).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
+        vc.vertex(m, x+w, y+h, 0).color(r,g,b,a).texture(1,1).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
+        vc.vertex(m, x+w, y,   0).color(r,g,b,a).texture(1,0).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
+        vc.vertex(m, x,   y,   0).color(r,g,b,a).texture(0,0).overlay(OverlayTexture.DEFAULT_UV).light(light).normal(0,0,1);
     }
 }

@@ -1,7 +1,5 @@
 package com.itemmap.client.renderer;
 
-import com.itemmap.manager.FrameData;
-import com.itemmap.manager.FrameManager;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
 import net.minecraft.client.MinecraftClient;
@@ -11,73 +9,88 @@ import net.minecraft.util.Identifier;
 
 import java.io.ByteArrayInputStream;
 import java.util.Map;
-import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
-/**
- * Client-side: manages GPU textures for custom images and vanilla item sprites.
- * Also advances spin angles each tick.
- */
 @Environment(EnvType.CLIENT)
 public class FrameRenderManager {
 
-    // imageId -> registered texture Identifier
-    private static final Map<String, Identifier> IMAGE_TEXTURES = new ConcurrentHashMap<>();
-    // Track what's already uploaded to GPU
-    private static final Set<String> REGISTERED = ConcurrentHashMap.newKeySet();
+    // entityId -> current spin angle (degrees)
+    private static final Map<Long, Float> SPIN_ANGLES = new ConcurrentHashMap<>();
 
-    public static final String TEX_NAMESPACE = "itemmap_dynamic";
+    // imageId -> uploaded GPU texture identifier (for custom overrides)
+    private static final Map<String, Identifier> CUSTOM_TEXTURES = new ConcurrentHashMap<>();
 
-    /** Returns the GPU texture Identifier for a custom image, uploading it if needed. */
-    public static Identifier getImageTexture(String imageId) {
-        if (IMAGE_TEXTURES.containsKey(imageId)) return IMAGE_TEXTURES.get(imageId);
-        byte[] png = FrameManager.getImage(imageId);
-        if (png == null) return null;
-        return uploadTexture(imageId, png);
+    /** Called every client tick to advance spin angles for 3D frames. */
+    public static void tickSpins(float spinSpeedDeg) {
+        // All spinning frames use the same speed for now
+        // Per-frame speed is stored in FrameData but we advance all here
+        for (Map.Entry<Long, Float> e : SPIN_ANGLES.entrySet()) {
+            e.setValue((e.getValue() + spinSpeedDeg) % 360f);
+        }
     }
 
-    /** Upload PNG bytes to GPU, register with MC texture manager. */
-    private static Identifier uploadTexture(String imageId, byte[] png) {
+    /** Get spin angle for a frame, creating it at 0 if new. */
+    public static float getSpinAngle(long entityId, boolean is3D) {
+        if (!is3D) return 0f;
+        return SPIN_ANGLES.computeIfAbsent(entityId, k -> 0f);
+    }
+
+    /** Advance a specific frame's spin by the given degrees per tick. */
+    public static void advanceSpin(long entityId, float degreesPerTick) {
+        SPIN_ANGLES.merge(entityId, degreesPerTick, (old, add) -> (old + add) % 360f);
+    }
+
+    /** Remove spin state (frame removed). */
+    public static void removeSpin(long entityId) {
+        SPIN_ANGLES.remove(entityId);
+    }
+
+    /** Upload a custom PNG override for an item ID. */
+    public static void setCustomTexture(String itemId, byte[] png) {
         try {
-            MinecraftClient client = MinecraftClient.getInstance();
-            if (client == null) return null;
+            MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc == null) return;
+
+            // Remove old texture if exists
+            Identifier old = CUSTOM_TEXTURES.remove(itemId);
+            if (old != null) {
+                try { mc.getTextureManager().destroyTexture(old); } catch (Exception ignored) {}
+            }
+
             NativeImage img = NativeImage.read(new ByteArrayInputStream(png));
             NativeImageBackedTexture tex = new NativeImageBackedTexture(img);
-            Identifier id = Identifier.of(TEX_NAMESPACE, imageId.toLowerCase()
-                .replaceAll("[^a-z0-9_/.-]", "_"));
-            client.getTextureManager().registerTexture(id, tex);
-            IMAGE_TEXTURES.put(imageId, id);
-            REGISTERED.add(imageId);
-            return id;
+            String safeId = itemId.replace(":", "_").replaceAll("[^a-z0-9_.-]", "_");
+            Identifier id = Identifier.of("itemmap_custom", safeId);
+            mc.getTextureManager().registerTexture(id, tex);
+            CUSTOM_TEXTURES.put(itemId, id);
         } catch (Exception e) {
-            return null;
+            // Silently ignore bad PNG bytes
         }
     }
 
-    /** Called when a new image arrives — removes stale GPU texture. */
-    public static void invalidateImage(String imageId) {
-        Identifier old = IMAGE_TEXTURES.remove(imageId);
-        REGISTERED.remove(imageId);
+    /** Get custom texture for an item ID, or null if none. */
+    public static Identifier getCustomTexture(String itemId) {
+        return CUSTOM_TEXTURES.get(itemId);
+    }
+
+    public static void invalidateCustomTexture(String itemId) {
+        Identifier old = CUSTOM_TEXTURES.remove(itemId);
         if (old != null) {
-            try {
-                MinecraftClient client = MinecraftClient.getInstance();
-                if (client != null) client.getTextureManager().destroyTexture(old);
-            } catch (Exception ignored) {}
-        }
-    }
-
-    /** Returns the vanilla item texture Identifier for an item registry path. */
-    public static Identifier getVanillaItemTexture(String itemPath) {
-        // Vanilla item textures live at minecraft:textures/item/<path>.png
-        return Identifier.of("minecraft", "textures/item/" + itemPath + ".png");
-    }
-
-    /** Called each client tick — advance spin angles. */
-    public static void tickSpins() {
-        for (FrameData d : FrameManager.all()) {
-            if (d.mode == FrameData.DisplayMode.SPIN_3D) {
-                d.spinAngle = (d.spinAngle + d.spinSpeed) % 360f;
+            MinecraftClient mc = MinecraftClient.getInstance();
+            if (mc != null) {
+                try { mc.getTextureManager().destroyTexture(old); } catch (Exception ignored) {}
             }
         }
+    }
+
+    public static void clearAll() {
+        SPIN_ANGLES.clear();
+        MinecraftClient mc = MinecraftClient.getInstance();
+        if (mc != null) {
+            for (Identifier id : CUSTOM_TEXTURES.values()) {
+                try { mc.getTextureManager().destroyTexture(id); } catch (Exception ignored) {}
+            }
+        }
+        CUSTOM_TEXTURES.clear();
     }
 }

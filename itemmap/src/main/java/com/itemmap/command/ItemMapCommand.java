@@ -60,6 +60,7 @@ public class ItemMapCommand {
     private static LiteralArgumentBuilder<ServerCommandSource> build(String root) {
         return CommandManager.literal(root)
             .requires(src -> src.hasPermissionLevel(2))
+            .executes(ctx -> cmdHelp(ctx.getSource()))
 
             // ── /im set <mode> [frameId] ──────────────────────────────────────
             .then(CommandManager.literal("set")
@@ -223,6 +224,10 @@ public class ItemMapCommand {
             // ── /im help ──────────────────────────────────────────────────────
             .then(CommandManager.literal("help")
                 .executes(ctx -> cmdHelp(ctx.getSource()))
+            )
+
+            .then(CommandManager.literal("tutorial")
+                .executes(ctx -> cmdTutorial(ctx.getSource()))
             );
     }
 
@@ -575,28 +580,122 @@ public class ItemMapCommand {
         return 1;
     }
 
+    private static int cmdTutorial(ServerCommandSource src) {
+        src.sendFeedback(() -> Text.literal(
+            "§6§l━━━━━━ ItemMap Tutorial ━━━━━━
+" +
+            "§e§lStep 1: §r§fPlace an item frame on a wall.
+" +
+            "§e§lStep 2: §r§fOpen your creative inventory → §bItem Maps §ftab.
+" +
+            "§e§lStep 3: §r§fFind any item — there are two versions:
+" +
+            "  §7• §fDiamond Sword §7→ flat 2D icon fills the frame
+" +
+            "  §7• §fDiamond Sword 3D §7→ spins like a dropped item
+" +
+            "§e§lStep 4: §r§fPut the map item into the frame.
+" +
+            "  §7It will display the item's texture automatically.
+" +
+            "§e§lStep 5 (optional): §r§fRight-click the frame (empty hand)
+" +
+            "  §7to open the settings GUI and customize:
+" +
+            "  §7scale, spin speed, glow, label, background, and more.
+" +
+            "§e§lCommands quick-reference:
+" +
+            "  §b/im set mode §f<flat2d|render3d|spin3d>
+" +
+            "  §b/im set spinspeed §f<0.1-100>
+" +
+            "  §b/im set scale §f<0.1-2.0>
+" +
+            "  §b/im set glow §f<true|false>
+" +
+            "  §b/im set label §f<text|none>
+" +
+            "  §b/im upload §f<id> §b<url> §7— upload custom image
+" +
+            "  §b/im undo §7/ §b/im redo
+" +
+            "§6§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        ), false);
+        return 1;
+    }
+
     private static int cmdHelp(ServerCommandSource src) {
         src.sendFeedback(() -> Text.literal(
-            "§6§l[ItemMap] Commands\n" +
-            "§e/im set mode <flat2d|render3d|spin3d> §7[frameId]\n" +
-            "§e/im set spinspeed <0.1-100> §7[frameId]\n" +
-            "§e/im set scale <0.1-2.0> §7[frameId]\n" +
-            "§e/im set padding <0-50> §7[frameId]\n" +
-            "§e/im set glow <true|false> §7[frameId]\n" +
-            "§e/im set invisible <true|false> §7[frameId]\n" +
-            "§e/im set label <text|none> §7[frameId]\n" +
-            "§e/im set bgcolor <AARRGGBB> §7[frameId]\n" +
-            "§e/im set image <imageId|none> §7[frameId]\n" +
+            "§6§l━━━━━━━━ ItemMap Commands ━━━━━━━━\n" +
+            "§7Type §e/im <command> §7to run. All commands need OP.\n" +
+            "§7Aliases: §e/im §7and §e/itemmap §7both work.\n" +
+            "\n" +
+            "§e§lDISPLAY MODE\n" +
+            "§e/im set mode <flat2d|render3d|spin3d> <frameId>\n" +
+            "§7  flat2d  §f→ fills the frame with the item's flat 2D texture\n" +
+            "§7  render3d §f→ shows the item as a 3D model, static\n" +
+            "§7  spin3d  §f→ item spins like a dropped item (default for 3D maps)\n" +
+            "\n" +
+            "§e§lSPIN SPEED\n" +
+            "§e/im set spinspeed <speed> <frameId>\n" +
+            "§7  Controls how fast the item spins. §fDefault: 2.0\n" +
+            "§7  Range: 0.1 (very slow) to 100 (very fast)\n" +
+            "\n" +
+            "§e§lSCALE\n" +
+            "§e/im set scale <size> <frameId>\n" +
+            "§7  Makes the displayed item bigger or smaller inside the frame.\n" +
+            "§7  Range: §f0.1 §7(tiny) to §f2.0 §7(double size). Default: §f1.0\n" +
+            "\n" +
+            "§e§lPADDING\n" +
+            "§e/im set padding <percent> <frameId>\n" +
+            "§7  Adds empty space around the item. §f0 §7= fills frame edge to edge.\n" +
+            "§7  Range: 0 to 50 (percent of frame size)\n" +
+            "\n" +
+            "§e§lGLOW\n" +
+            "§e/im set glow <true|false> <frameId>\n" +
+            "§7  Adds a bright yellow outline around the frame.\n" +
+            "\n" +
+            "§e§lINVISIBLE FRAME\n" +
+            "§e/im set invisible <true|false> <frameId>\n" +
+            "§7  Hides the wooden frame border — only the item shows.\n" +
+            "\n" +
+            "§e§lLABEL\n" +
+            "§e/im set label <text> <frameId>\n" +
+            "§7  Sets a custom name shown below the item. Use underscores for spaces.\n" +
+            "§7  Example: §e/im set label My_Cool_Item 12345\n" +
+            "§e/im set label none <frameId> §7— removes the label\n" +
+            "\n" +
+            "§e§lBACKGROUND COLOR\n" +
+            "§e/im set bgcolor <AARRGGBB> <frameId>\n" +
+            "§7  Sets a background color behind the item. Format: 8-digit hex.\n" +
+            "§7  First 2 digits = opacity (FF=fully visible, 00=transparent).\n" +
+            "§7  Example: §e/im set bgcolor 80FF0000 §7= semi-transparent red\n" +
+            "\n" +
+            "§e§lCUSTOM IMAGE\n" +
             "§e/im upload <imageId> <url>\n" +
-            "§e/im reset §7[frameId] — reset to defaults\n" +
-            "§e/im remove §7[frameId]\n" +
-            "§e/im list §7— list all frames\n" +
-            "§e/im images §7— list uploaded images\n" +
-            "§e/im info §7[frameId]\n" +
-            "§e/im undo §7/ §e/im redo\n" +
-            "§e/im reload\n" +
-            "§7Aliases: /itemmap, /im\n" +
-            "§7Tip: Omit frameId to target the frame you're looking at."
+            "§7  Downloads a PNG from a URL and saves it as a custom texture.\n" +
+            "§7  Example: §e/im upload mylogo https://i.imgur.com/abc.png\n" +
+            "§e/im set image <imageId> <frameId>\n" +
+            "§7  Applies a previously uploaded image to the frame.\n" +
+            "§e/im set image none <frameId> §7— reverts to vanilla item texture\n" +
+            "§e/im images §7— lists all uploaded images and their sizes\n" +
+            "\n" +
+            "§e§lINFO & MANAGEMENT\n" +
+            "§e/im info <frameId> §7— shows all current settings for a frame\n" +
+            "§e/im list §7— lists all frames that have ItemMap settings applied\n" +
+            "§e/im reset <frameId> §7— resets frame back to all default settings\n" +
+            "§e/im remove <frameId> §7— removes ItemMap data from a frame entirely\n" +
+            "\n" +
+            "§e§lUNDO / REDO\n" +
+            "§e/im undo §7— undoes your last change (up to 50 steps)\n" +
+            "§e/im redo §7— redoes what you just undid\n" +
+            "\n" +
+            "§e§lOTHER\n" +
+            "§e/im reload §7— reloads all frame data from disk and re-syncs all players\n" +
+            "§e/im tutorial §7— shows a beginner step-by-step guide\n" +
+            "§e/im help §7— shows this list\n" +
+            "§6§l━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         ), false);
         return 1;
     }
