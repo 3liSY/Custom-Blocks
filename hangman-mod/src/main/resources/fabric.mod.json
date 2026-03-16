@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "id": "hangman",
+  "version": "${version}",
+  "name": "Hangman",
+  "description": "A fully customizable multiplayer Hangman game mod with HUD overlays, stick figure, stats, and more.",
+  "authors": ["You"],
+  "contact": {},
+  "license": "MIT",
+  "environment": "*",
+  "entrypoints": {
+    "main":   ["com.hangman.HangmanMod"],
+    "client": ["com.hangman.client.HangmanClientMod"]
+  },
+  "mixins": [
+    "hangman.mixins.json",
+    { "config": "hangman.client.mixins.json", "environment": "client" }
+  ],
+  "depends": {
+    "fabricloader": ">=0.16.5",
+    "fabric-api": "*",
+    "minecraft": "~1.21.1"
+  }
+}

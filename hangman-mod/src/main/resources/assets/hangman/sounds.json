@@ -1,0 +1,8 @@
+{
+  "hangman.correct": { "sounds": [{"name": "minecraft:block.note_block.pling"}], "subtitle": "Correct guess!" },
+  "hangman.wrong":   { "sounds": [{"name": "minecraft:entity.villager.no"}],     "subtitle": "Wrong guess!" },
+  "hangman.win":     { "sounds": [{"name": "minecraft:ui.toast.challenge_complete"}], "subtitle": "Winner!" },
+  "hangman.lose":    { "sounds": [{"name": "minecraft:entity.wither.death"}],     "subtitle": "Eliminated!" },
+  "hangman.tick":    { "sounds": [{"name": "minecraft:block.note_block.bass"}],   "subtitle": "Timer ticking" },
+  "hangman.key":     { "sounds": [{"name": "minecraft:ui.button.click"}],         "subtitle": "Key pressed" }
+}
