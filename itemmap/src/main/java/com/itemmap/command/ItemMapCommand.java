@@ -5,7 +5,6 @@ import com.itemmap.manager.FrameData;
 import com.itemmap.manager.FrameManager;
 import com.itemmap.manager.UndoManager;
 import com.itemmap.network.FrameSyncPayload;
-import com.itemmap.network.FrameUpdatePayload;
 import com.itemmap.network.ImagePayload;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.FloatArgumentType;
@@ -13,14 +12,14 @@ import com.mojang.brigadier.arguments.StringArgumentType;
 import com.mojang.brigadier.builder.LiteralArgumentBuilder;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
-import net.minecraft.util.math.Box;
-import net.minecraft.util.math.Vec3d;
 import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.entity.decoration.ItemFrameEntity;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
+import net.minecraft.util.math.Box;
+import net.minecraft.util.math.Vec3d;
 
 import java.net.URI;
 import java.net.http.*;
@@ -30,14 +29,6 @@ import java.util.concurrent.ConcurrentLinkedQueue;
 
 public class ItemMapCommand {
 
-    private static final SuggestionProvider<ServerCommandSource> FRAME_SUGGESTIONS =
-        (ctx, builder) -> {
-            // Suggest all known frame entity IDs
-            for (long id : FrameManager.allIds())
-                builder.suggest(String.valueOf(id));
-            return builder.buildFuture();
-        };
-
     private static final SuggestionProvider<ServerCommandSource> IMAGE_SUGGESTIONS =
         (ctx, builder) -> {
             for (String id : FrameManager.allImageIds()) builder.suggest(id);
@@ -46,7 +37,7 @@ public class ItemMapCommand {
 
     private static final SuggestionProvider<ServerCommandSource> MODE_SUGGESTIONS =
         (ctx, builder) -> {
-            for (String m : new String[]{"flat2d","render3d","spin3d"}) builder.suggest(m);
+            for (String m : new String[]{"flat2d","spin3d","render3d"}) builder.suggest(m);
             return builder.buildFuture();
         };
 
@@ -62,103 +53,81 @@ public class ItemMapCommand {
             .requires(src -> src.hasPermissionLevel(2))
             .executes(ctx -> cmdHelp(ctx.getSource()))
 
-            // ── /im set <mode> [frameId] ──────────────────────────────────────
-            .then(CommandManager.literal("set")
-                .then(CommandManager.literal("mode")
-                    .then(CommandManager.argument("mode", StringArgumentType.word())
-                        .suggests(MODE_SUGGESTIONS)
-                        .executes(ctx -> cmdSetMode(ctx.getSource(),
-                            StringArgumentType.getString(ctx, "mode"), -1))
-                        .then(CommandManager.argument("frameId", StringArgumentType.word())
-                            .executes(ctx -> cmdSetMode(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "mode"),
-                                parseLong(StringArgumentType.getString(ctx, "frameId")))))
-                    )
-                )
-                .then(CommandManager.literal("spinspeed")
-                    .then(CommandManager.argument("speed", FloatArgumentType.floatArg(0.1f, 100f))
-                        .executes(ctx -> cmdSetFloat(ctx.getSource(), "spinSpeed",
-                            FloatArgumentType.getFloat(ctx, "speed"), -1))
-                        .then(CommandManager.argument("frameId", StringArgumentType.word())
-                            .executes(ctx -> cmdSetFloat(ctx.getSource(), "spinSpeed",
-                                FloatArgumentType.getFloat(ctx, "speed"),
-                                parseLong(StringArgumentType.getString(ctx, "frameId")))))
-                    )
-                )
-                .then(CommandManager.literal("scale")
-                    .then(CommandManager.argument("scale", FloatArgumentType.floatArg(0.1f, 2.0f))
-                        .executes(ctx -> cmdSetFloat(ctx.getSource(), "scale",
-                            FloatArgumentType.getFloat(ctx, "scale"), -1))
-                        .then(CommandManager.argument("frameId", StringArgumentType.word())
-                            .executes(ctx -> cmdSetFloat(ctx.getSource(), "scale",
-                                FloatArgumentType.getFloat(ctx, "scale"),
-                                parseLong(StringArgumentType.getString(ctx, "frameId")))))
-                    )
-                )
-                .then(CommandManager.literal("padding")
-                    .then(CommandManager.argument("pct", FloatArgumentType.floatArg(0f, 50f))
-                        .executes(ctx -> cmdSetFloat(ctx.getSource(), "padPct",
-                            FloatArgumentType.getFloat(ctx, "pct"), -1))
-                        .then(CommandManager.argument("frameId", StringArgumentType.word())
-                            .executes(ctx -> cmdSetFloat(ctx.getSource(), "padPct",
-                                FloatArgumentType.getFloat(ctx, "pct"),
-                                parseLong(StringArgumentType.getString(ctx, "frameId")))))
-                    )
-                )
-                .then(CommandManager.literal("glow")
-                    .then(CommandManager.argument("value", BoolArgumentType.bool())
-                        .executes(ctx -> cmdSetBool(ctx.getSource(), "glowing",
-                            BoolArgumentType.getBool(ctx, "value"), -1))
-                        .then(CommandManager.argument("frameId", StringArgumentType.word())
-                            .executes(ctx -> cmdSetBool(ctx.getSource(), "glowing",
-                                BoolArgumentType.getBool(ctx, "value"),
-                                parseLong(StringArgumentType.getString(ctx, "frameId")))))
-                    )
-                )
-                .then(CommandManager.literal("invisible")
-                    .then(CommandManager.argument("value", BoolArgumentType.bool())
-                        .executes(ctx -> cmdSetBool(ctx.getSource(), "invisible",
-                            BoolArgumentType.getBool(ctx, "value"), -1))
-                        .then(CommandManager.argument("frameId", StringArgumentType.word())
-                            .executes(ctx -> cmdSetBool(ctx.getSource(), "invisible",
-                                BoolArgumentType.getBool(ctx, "value"),
-                                parseLong(StringArgumentType.getString(ctx, "frameId")))))
-                    )
-                )
-                .then(CommandManager.literal("label")
-                    .then(CommandManager.argument("text", StringArgumentType.greedyString())
-                        .executes(ctx -> cmdSetLabel(ctx.getSource(),
-                            StringArgumentType.getString(ctx, "text"), -1))
-                        .then(CommandManager.argument("frameId", StringArgumentType.word())
-                            .executes(ctx -> cmdSetLabel(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "text"),
-                                parseLong(StringArgumentType.getString(ctx, "frameId")))))
-                    )
-                )
-                .then(CommandManager.literal("bgcolor")
-                    .then(CommandManager.argument("argb_hex", StringArgumentType.word())
-                        .executes(ctx -> cmdSetBgColor(ctx.getSource(),
-                            StringArgumentType.getString(ctx, "argb_hex"), -1))
-                        .then(CommandManager.argument("frameId", StringArgumentType.word())
-                            .executes(ctx -> cmdSetBgColor(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "argb_hex"),
-                                parseLong(StringArgumentType.getString(ctx, "frameId")))))
-                    )
-                )
-                .then(CommandManager.literal("image")
-                    .then(CommandManager.argument("imageId", StringArgumentType.word())
-                        .suggests(IMAGE_SUGGESTIONS)
-                        .executes(ctx -> cmdSetImage(ctx.getSource(),
-                            StringArgumentType.getString(ctx, "imageId"), -1))
-                        .then(CommandManager.argument("frameId", StringArgumentType.word())
-                            .executes(ctx -> cmdSetImage(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "imageId"),
-                                parseLong(StringArgumentType.getString(ctx, "frameId")))))
-                    )
+            // /im mode <flat2d|spin3d|render3d>
+            .then(CommandManager.literal("mode")
+                .then(CommandManager.argument("mode", StringArgumentType.word())
+                    .suggests(MODE_SUGGESTIONS)
+                    .executes(ctx -> cmdMode(ctx.getSource(),
+                        StringArgumentType.getString(ctx, "mode")))
                 )
             )
 
-            // ── /im upload <imageId> <url> ────────────────────────────────────
+            // /im spin <speed>   (0.1 - 100, default 2)
+            .then(CommandManager.literal("spin")
+                .then(CommandManager.argument("speed", FloatArgumentType.floatArg(0.1f, 100f))
+                    .executes(ctx -> cmdSpin(ctx.getSource(),
+                        FloatArgumentType.getFloat(ctx, "speed")))
+                )
+            )
+
+            // /im scale <size>   (0.1 - 2.0)
+            .then(CommandManager.literal("scale")
+                .then(CommandManager.argument("size", FloatArgumentType.floatArg(0.1f, 2.0f))
+                    .executes(ctx -> cmdScale(ctx.getSource(),
+                        FloatArgumentType.getFloat(ctx, "size")))
+                )
+            )
+
+            // /im padding <percent>  (0 - 50)
+            .then(CommandManager.literal("padding")
+                .then(CommandManager.argument("pct", FloatArgumentType.floatArg(0f, 50f))
+                    .executes(ctx -> cmdPadding(ctx.getSource(),
+                        FloatArgumentType.getFloat(ctx, "pct")))
+                )
+            )
+
+            // /im glow <on|off>
+            .then(CommandManager.literal("glow")
+                .then(CommandManager.argument("value", BoolArgumentType.bool())
+                    .executes(ctx -> cmdGlow(ctx.getSource(),
+                        BoolArgumentType.getBool(ctx, "value")))
+                )
+            )
+
+            // /im invisible <on|off>
+            .then(CommandManager.literal("invisible")
+                .then(CommandManager.argument("value", BoolArgumentType.bool())
+                    .executes(ctx -> cmdInvisible(ctx.getSource(),
+                        BoolArgumentType.getBool(ctx, "value")))
+                )
+            )
+
+            // /im label <text>   (use _ for spaces, "none" to remove)
+            .then(CommandManager.literal("label")
+                .then(CommandManager.argument("text", StringArgumentType.greedyString())
+                    .executes(ctx -> cmdLabel(ctx.getSource(),
+                        StringArgumentType.getString(ctx, "text")))
+                )
+            )
+
+            // /im bg <AARRGGBB hex>  (e.g. 80FF0000 = semi red, 00000000 = none)
+            .then(CommandManager.literal("bg")
+                .then(CommandManager.argument("color", StringArgumentType.word())
+                    .executes(ctx -> cmdBg(ctx.getSource(),
+                        StringArgumentType.getString(ctx, "color")))
+                )
+            )
+
+            // /im image <imageId>  or  /im image none
+            .then(CommandManager.literal("image")
+                .then(CommandManager.argument("id", StringArgumentType.word())
+                    .suggests(IMAGE_SUGGESTIONS)
+                    .executes(ctx -> cmdImage(ctx.getSource(),
+                        StringArgumentType.getString(ctx, "id")))
+                )
+            )
+
+            // /im upload <imageId> <url>
             .then(CommandManager.literal("upload")
                 .then(CommandManager.argument("imageId", StringArgumentType.word())
                     .then(CommandManager.argument("url", StringArgumentType.greedyString())
@@ -169,254 +138,216 @@ public class ItemMapCommand {
                 )
             )
 
-            // ── /im reset [frameId] ───────────────────────────────────────────
+            // /im reset
             .then(CommandManager.literal("reset")
-                .executes(ctx -> cmdReset(ctx.getSource(), -1))
-                .then(CommandManager.argument("frameId", StringArgumentType.word())
-                    .executes(ctx -> cmdReset(ctx.getSource(),
-                        parseLong(StringArgumentType.getString(ctx, "frameId"))))
-                )
+                .executes(ctx -> cmdReset(ctx.getSource()))
             )
 
-            // ── /im remove [frameId] ──────────────────────────────────────────
+            // /im remove
             .then(CommandManager.literal("remove")
-                .executes(ctx -> cmdRemove(ctx.getSource(), -1))
-                .then(CommandManager.argument("frameId", StringArgumentType.word())
-                    .executes(ctx -> cmdRemove(ctx.getSource(),
-                        parseLong(StringArgumentType.getString(ctx, "frameId"))))
-                )
+                .executes(ctx -> cmdRemove(ctx.getSource()))
             )
 
-            // ── /im list ──────────────────────────────────────────────────────
+            // /im info
+            .then(CommandManager.literal("info")
+                .executes(ctx -> cmdInfo(ctx.getSource()))
+            )
+
+            // /im list
             .then(CommandManager.literal("list")
                 .executes(ctx -> cmdList(ctx.getSource()))
             )
 
-            // ── /im images ────────────────────────────────────────────────────
+            // /im images
             .then(CommandManager.literal("images")
                 .executes(ctx -> cmdImages(ctx.getSource()))
             )
 
-            // ── /im info [frameId] ────────────────────────────────────────────
-            .then(CommandManager.literal("info")
-                .executes(ctx -> cmdInfo(ctx.getSource(), -1))
-                .then(CommandManager.argument("frameId", StringArgumentType.word())
-                    .executes(ctx -> cmdInfo(ctx.getSource(),
-                        parseLong(StringArgumentType.getString(ctx, "frameId"))))
-                )
-            )
-
-            // ── /im undo ──────────────────────────────────────────────────────
+            // /im undo
             .then(CommandManager.literal("undo")
                 .executes(ctx -> cmdUndo(ctx.getSource()))
             )
 
-            // ── /im redo ──────────────────────────────────────────────────────
+            // /im redo
             .then(CommandManager.literal("redo")
                 .executes(ctx -> cmdRedo(ctx.getSource()))
             )
 
-            // ── /im reload ────────────────────────────────────────────────────
+            // /im reload
             .then(CommandManager.literal("reload")
                 .executes(ctx -> cmdReload(ctx.getSource()))
             )
 
-            // ── /im help ──────────────────────────────────────────────────────
-            .then(CommandManager.literal("help")
-                .executes(ctx -> cmdHelp(ctx.getSource()))
-            )
-
+            // /im tutorial
             .then(CommandManager.literal("tutorial")
                 .executes(ctx -> cmdTutorial(ctx.getSource()))
+            )
+
+            // /im help
+            .then(CommandManager.literal("help")
+                .executes(ctx -> cmdHelp(ctx.getSource()))
             );
     }
 
-    // ── Helpers ──────────────────────────────────────────────────────────────
+    // ── Frame resolver: always target the frame you are looking at ────────────
 
-    private static long parseLong(String s) {
-        try { return Long.parseLong(s); } catch (NumberFormatException e) { return -1; }
-    }
-
-    /** Resolve the target frame: either by explicit frameId, or by what the player is looking at. */
-    private static FrameData resolveFrame(ServerCommandSource src, long frameId) {
-        if (frameId > 0) {
-            FrameData d = FrameManager.get(frameId);
-            if (d == null) {
-                // Auto-create if we got a valid-looking ID
-                return FrameManager.getOrCreate(frameId);
-            }
-            return d;
-        }
-        // Look at what the player is pointing at
+    private static FrameData lookAtFrame(ServerCommandSource src) {
         if (!(src.getEntity() instanceof ServerPlayerEntity player)) {
-            src.sendError(Text.literal("§c[ItemMap] Must specify a frameId or look at a frame."));
+            src.sendError(Text.literal("[ItemMap] Must be a player."));
             return null;
         }
-        // Cast a ray to find the item frame entity the player is looking at
-        Vec3d eyePos = player.getEyePos();
-        Vec3d lookVec = player.getRotationVec(1.0f);
-        Vec3d reach = eyePos.add(lookVec.multiply(6.0));
-        Box searchBox = player.getBoundingBox()
-            .stretch(lookVec.multiply(6.0)).expand(1.0);
+        Vec3d eye    = player.getEyePos();
+        Vec3d look   = player.getRotationVec(1.0f);
+        Vec3d reach  = eye.add(look.multiply(6.0));
+        Box   search = player.getBoundingBox().stretch(look.multiply(6.0)).expand(1.0);
+
         ItemFrameEntity closest = null;
-        double closest_dist = 7.0;
-        for (net.minecraft.entity.Entity e : player.getWorld().getOtherEntities(player, searchBox)) {
+        double bestDist = 7.0;
+        for (net.minecraft.entity.Entity e : player.getWorld().getOtherEntities(player, search)) {
             if (!(e instanceof ItemFrameEntity ife)) continue;
-            Box bb = ife.getBoundingBox().expand(0.3);
-            java.util.Optional<Vec3d> inter = bb.raycast(eyePos, reach);
-            if (inter.isPresent()) {
-                double d = eyePos.squaredDistanceTo(inter.get());
-                if (d < closest_dist) { closest_dist = d; closest = ife; }
+            java.util.Optional<Vec3d> hit = ife.getBoundingBox().expand(0.3).raycast(eye, reach);
+            if (hit.isPresent()) {
+                double d = eye.squaredDistanceTo(hit.get());
+                if (d < bestDist) { bestDist = d; closest = ife; }
             }
         }
         if (closest == null) {
-            src.sendError(Text.literal("§c[ItemMap] Look at an item frame or provide a frameId."));
+            src.sendError(Text.literal("[ItemMap] Look at an item frame first."));
             return null;
         }
         return FrameManager.getOrCreate(closest.getId());
     }
 
-    // ── Command implementations ───────────────────────────────────────────────
+    private static void save(ServerCommandSource src, FrameData before, FrameData after) {
+        FrameManager.put(after);
+        FrameManager.saveAll();
+        if (src.getEntity() instanceof ServerPlayerEntity p)
+            UndoManager.push(p.getUuid(), before, after);
+        ItemMapMod.broadcastFrameUpdate(src.getServer(), after);
+    }
 
-    private static int cmdSetMode(ServerCommandSource src, String modeStr, long frameId) {
-        FrameData frame = resolveFrame(src, frameId);
-        if (frame == null) return 0;
+    // ── Commands ──────────────────────────────────────────────────────────────
 
-        FrameData before = frame.copy();
-        FrameData.DisplayMode mode;
+    private static int cmdMode(ServerCommandSource src, String modeStr) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        FrameData before = f.copy();
         switch (modeStr.toLowerCase()) {
-            case "flat2d"   -> mode = FrameData.DisplayMode.FLAT_2D;
-            case "render3d" -> mode = FrameData.DisplayMode.RENDER_3D;
-            case "spin3d"   -> mode = FrameData.DisplayMode.SPIN_3D;
-            default -> {
-                src.sendError(Text.literal("§c[ItemMap] Invalid mode. Use: flat2d, render3d, spin3d"));
-                return 0;
-            }
+            case "flat2d"   -> f.mode = FrameData.DisplayMode.FLAT_2D;
+            case "spin3d"   -> f.mode = FrameData.DisplayMode.SPIN_3D;
+            case "render3d" -> f.mode = FrameData.DisplayMode.RENDER_3D;
+            default -> { src.sendError(Text.literal("[ItemMap] Use: flat2d, spin3d, render3d")); return 0; }
         }
-        frame.mode = mode;
-        FrameManager.put(frame);
-        FrameManager.saveAll();
-        if (src.getEntity() instanceof ServerPlayerEntity p)
-            UndoManager.push(p.getUuid(), before, frame);
-        ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Frame " + frame.entityId + " mode -> §f" + mode.name()), false);
+        save(src, before, f);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Mode -> " + f.mode.name()), false);
         return 1;
     }
 
-    private static int cmdSetFloat(ServerCommandSource src, String field, float value, long frameId) {
-        FrameData frame = resolveFrame(src, frameId);
-        if (frame == null) return 0;
-        FrameData before = frame.copy();
-        switch (field) {
-            case "spinSpeed" -> frame.spinSpeed = value;
-            case "scale"     -> frame.scale     = value;
-            case "padPct"    -> frame.padPct    = value;
-        }
-        FrameManager.put(frame);
-        FrameManager.saveAll();
-        if (src.getEntity() instanceof ServerPlayerEntity p)
-            UndoManager.push(p.getUuid(), before, frame);
-        ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Frame " + frame.entityId + " " + field + " -> §f" + value), false);
+    private static int cmdSpin(ServerCommandSource src, float speed) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        FrameData before = f.copy();
+        f.spinSpeed = speed;
+        save(src, before, f);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Spin speed -> " + speed), false);
         return 1;
     }
 
-    private static int cmdSetBool(ServerCommandSource src, String field, boolean value, long frameId) {
-        FrameData frame = resolveFrame(src, frameId);
-        if (frame == null) return 0;
-        FrameData before = frame.copy();
-        switch (field) {
-            case "glowing"   -> frame.glowing   = value;
-            case "invisible" -> frame.invisible  = value;
-        }
-        FrameManager.put(frame);
-        FrameManager.saveAll();
-        if (src.getEntity() instanceof ServerPlayerEntity p)
-            UndoManager.push(p.getUuid(), before, frame);
-        ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Frame " + frame.entityId + " " + field + " -> §f" + value), false);
+    private static int cmdScale(ServerCommandSource src, float size) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        FrameData before = f.copy();
+        f.scale = size;
+        save(src, before, f);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Scale -> " + size), false);
         return 1;
     }
 
-    private static int cmdSetLabel(ServerCommandSource src, String text, long frameId) {
-        FrameData frame = resolveFrame(src, frameId);
-        if (frame == null) return 0;
-        FrameData before = frame.copy();
-        frame.label = text.equalsIgnoreCase("none") ? null : text.replace("_", " ");
-        FrameManager.put(frame);
-        FrameManager.saveAll();
-        if (src.getEntity() instanceof ServerPlayerEntity p)
-            UndoManager.push(p.getUuid(), before, frame);
-        ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Label -> §f" + frame.label), false);
+    private static int cmdPadding(ServerCommandSource src, float pct) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        FrameData before = f.copy();
+        f.padPct = pct;
+        save(src, before, f);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Padding -> " + pct + "%"), false);
         return 1;
     }
 
-    private static int cmdSetBgColor(ServerCommandSource src, String hex, long frameId) {
-        FrameData frame = resolveFrame(src, frameId);
-        if (frame == null) return 0;
-        FrameData before = frame.copy();
+    private static int cmdGlow(ServerCommandSource src, boolean on) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        FrameData before = f.copy();
+        f.glowing = on;
+        save(src, before, f);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Glow -> " + (on ? "ON" : "OFF")), false);
+        return 1;
+    }
+
+    private static int cmdInvisible(ServerCommandSource src, boolean on) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        FrameData before = f.copy();
+        f.invisible = on;
+        save(src, before, f);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Invisible frame -> " + (on ? "ON" : "OFF")), false);
+        return 1;
+    }
+
+    private static int cmdLabel(ServerCommandSource src, String text) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        FrameData before = f.copy();
+        f.label = text.equalsIgnoreCase("none") ? null : text.replace("_", " ");
+        save(src, before, f);
+        final String display = f.label != null ? f.label : "(removed)";
+        src.sendFeedback(() -> Text.literal("[ItemMap] Label -> " + display), false);
+        return 1;
+    }
+
+    private static int cmdBg(ServerCommandSource src, String hex) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        FrameData before = f.copy();
         try {
-            String clean = hex.startsWith("#") ? hex.substring(1) : hex;
-            frame.bgColor = (int) Long.parseLong(clean, 16);
+            f.bgColor = (int) Long.parseLong(hex.replace("#",""), 16);
         } catch (NumberFormatException e) {
-            src.sendError(Text.literal("§c[ItemMap] Invalid hex color. Example: FF000000 or #80FF0000"));
+            src.sendError(Text.literal("[ItemMap] Bad color. Example: 80FF0000 (semi red) or 00000000 (none)"));
             return 0;
         }
-        FrameManager.put(frame);
-        FrameManager.saveAll();
-        if (src.getEntity() instanceof ServerPlayerEntity p)
-            UndoManager.push(p.getUuid(), before, frame);
-        ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Background color set."), false);
+        save(src, before, f);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Background color set."), false);
         return 1;
     }
 
-    private static int cmdSetImage(ServerCommandSource src, String imageId, long frameId) {
-        FrameData frame = resolveFrame(src, frameId);
-        if (frame == null) return 0;
+    private static int cmdImage(ServerCommandSource src, String imageId) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
         if (!imageId.equalsIgnoreCase("none") && FrameManager.getImage(imageId) == null) {
-            src.sendError(Text.literal("§c[ItemMap] Image '" + imageId + "' not found. Use /im upload first."));
+            src.sendError(Text.literal("[ItemMap] Image '" + imageId + "' not found. Use /im upload first."));
             return 0;
         }
-        FrameData before = frame.copy();
-        frame.customImageId = imageId.equalsIgnoreCase("none") ? null : imageId;
-        FrameManager.put(frame);
-        FrameManager.saveAll();
-        if (src.getEntity() instanceof ServerPlayerEntity p)
-            UndoManager.push(p.getUuid(), before, frame);
-        ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Custom image -> §f" + frame.customImageId), false);
+        FrameData before = f.copy();
+        f.customImageId = imageId.equalsIgnoreCase("none") ? null : imageId;
+        save(src, before, f);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Image -> " + (f.customImageId != null ? f.customImageId : "vanilla")), false);
         return 1;
     }
 
     private static int cmdUpload(ServerCommandSource src, String imageId, String url) {
-        src.sendFeedback(() -> Text.literal("§e[ItemMap] Downloading image '" + imageId + "'..."), false);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Downloading '" + imageId + "'..."), false);
         Thread t = new Thread(() -> {
             try {
-                HttpClient client = HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10)).build();
+                HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
                 HttpRequest req = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
-                    .timeout(Duration.ofSeconds(15))
-                    .header("User-Agent", "Mozilla/5.0")
-                    .GET().build();
+                    .uri(URI.create(url)).timeout(Duration.ofSeconds(15))
+                    .header("User-Agent", "Mozilla/5.0").GET().build();
                 HttpResponse<byte[]> resp = client.send(req, HttpResponse.BodyHandlers.ofByteArray());
                 if (resp.statusCode() < 200 || resp.statusCode() >= 300) {
-                    src.sendFeedback(() -> Text.literal("§c[ItemMap] HTTP " + resp.statusCode()), false);
+                    src.sendFeedback(() -> Text.literal("[ItemMap] HTTP error: " + resp.statusCode()), false);
                     return;
                 }
                 byte[] png = resp.body();
                 if (png == null || png.length == 0) {
-                    src.sendFeedback(() -> Text.literal("§c[ItemMap] Empty response from URL."), false);
+                    src.sendFeedback(() -> Text.literal("[ItemMap] Empty response."), false);
                     return;
                 }
                 FrameManager.putImage(imageId, png);
                 FrameManager.saveAll();
                 ItemMapMod.broadcastImage(src.getServer(), imageId, png);
-                src.sendFeedback(() -> Text.literal("§a[ItemMap] Image '" + imageId + "' uploaded and synced (" + png.length / 1024 + " KB)."), false);
+                src.sendFeedback(() -> Text.literal("[ItemMap] Uploaded '" + imageId + "' (" + png.length/1024 + " KB)."), false);
             } catch (Exception e) {
-                src.sendFeedback(() -> Text.literal("§c[ItemMap] Failed: " + e.getMessage()), false);
+                src.sendFeedback(() -> Text.literal("[ItemMap] Failed: " + e.getMessage()), false);
             }
         }, "ItemMap-Upload");
         t.setDaemon(true);
@@ -424,256 +355,160 @@ public class ItemMapCommand {
         return 1;
     }
 
-    private static int cmdReset(ServerCommandSource src, long frameId) {
-        FrameData frame = resolveFrame(src, frameId);
-        if (frame == null) return 0;
-        FrameData before = frame.copy();
-        // Reset to defaults
-        frame.mode          = FrameData.DisplayMode.FLAT_2D;
-        frame.spinSpeed     = 2.0f;
-        frame.scale         = 1.0f;
-        frame.padPct        = 0f;
-        frame.glowing       = false;
-        frame.label         = null;
-        frame.bgColor       = 0;
-        frame.customImageId = null;
-        frame.invisible     = false;
-        FrameManager.put(frame);
-        FrameManager.saveAll();
-        if (src.getEntity() instanceof ServerPlayerEntity p)
-            UndoManager.push(p.getUuid(), before, frame);
-        ItemMapMod.broadcastFrameUpdate(src.getServer(), frame);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Frame " + frame.entityId + " reset to defaults."), false);
+    private static int cmdReset(ServerCommandSource src) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        FrameData before = f.copy();
+        f.mode = FrameData.DisplayMode.FLAT_2D;
+        f.spinSpeed = 2f; f.scale = 1f; f.padPct = 0f;
+        f.glowing = false; f.invisible = false;
+        f.label = null; f.bgColor = 0; f.customImageId = null;
+        save(src, before, f);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Frame reset to defaults."), false);
         return 1;
     }
 
-    private static int cmdRemove(ServerCommandSource src, long frameId) {
-        long targetId = frameId;
-        if (targetId <= 0) {
-            FrameData frame = resolveFrame(src, -1);
-            if (frame == null) return 0;
-            targetId = frame.entityId;
-        }
-        final long fid = targetId;
-        boolean removed = FrameManager.remove(fid);
-        if (!removed) {
-            src.sendError(Text.literal("§c[ItemMap] No ItemMap data for frame " + fid));
-            return 0;
-        }
+    private static int cmdRemove(ServerCommandSource src) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        long eid = f.entityId;
+        FrameManager.remove(eid);
         FrameManager.saveAll();
-        ItemMapMod.broadcastFrameRemove(src.getServer(), fid);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Removed ItemMap data for frame " + fid + "."), false);
+        ItemMapMod.broadcastFrameRemove(src.getServer(), eid);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Removed frame data."), false);
+        return 1;
+    }
+
+    private static int cmdInfo(ServerCommandSource src) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        src.sendFeedback(() -> Text.literal(
+            "[ItemMap] Frame " + f.entityId + "\n" +
+            "  Mode:      " + f.mode.name() + "\n" +
+            "  Spin:      " + f.spinSpeed + "\n" +
+            "  Scale:     " + f.scale + "\n" +
+            "  Padding:   " + f.padPct + "%\n" +
+            "  Glow:      " + f.glowing + "\n" +
+            "  Invisible: " + f.invisible + "\n" +
+            "  Label:     " + (f.label != null ? f.label : "(item name)") + "\n" +
+            "  BG Color:  " + String.format("#%08X", f.bgColor) + "\n" +
+            "  Image:     " + (f.customImageId != null ? f.customImageId : "(vanilla)")
+        ), false);
         return 1;
     }
 
     private static int cmdList(ServerCommandSource src) {
         Collection<FrameData> all = FrameManager.all();
-        if (all.isEmpty()) {
-            src.sendFeedback(() -> Text.literal("§7[ItemMap] No frames configured."), false);
-            return 1;
-        }
-        src.sendFeedback(() -> Text.literal("§6[ItemMap] §e" + all.size() + " frame(s):"), false);
+        if (all.isEmpty()) { src.sendFeedback(() -> Text.literal("[ItemMap] No frames configured."), false); return 1; }
+        src.sendFeedback(() -> Text.literal("[ItemMap] " + all.size() + " frame(s):"), false);
         for (FrameData d : all) {
-            final FrameData fd = d;
             src.sendFeedback(() -> Text.literal(
-                "§7  #" + fd.entityId + " §f" + fd.mode.name()
-                + " §7scale=" + fd.scale + " spin=" + fd.spinSpeed
-                + (fd.label != null ? " label=§f" + fd.label : "")
-                + (fd.customImageId != null ? " §bimg=" + fd.customImageId : "")), false);
+                "  #" + d.entityId + " " + d.mode.name() +
+                " scale=" + d.scale + " spin=" + d.spinSpeed +
+                (d.label != null ? " label=" + d.label : "") +
+                (d.customImageId != null ? " img=" + d.customImageId : "")), false);
         }
         return 1;
     }
 
     private static int cmdImages(ServerCommandSource src) {
         Set<String> ids = FrameManager.allImageIds();
-        if (ids.isEmpty()) {
-            src.sendFeedback(() -> Text.literal("§7[ItemMap] No custom images uploaded."), false);
-            return 1;
-        }
-        src.sendFeedback(() -> Text.literal("§6[ItemMap] §e" + ids.size() + " image(s):"), false);
+        if (ids.isEmpty()) { src.sendFeedback(() -> Text.literal("[ItemMap] No images uploaded."), false); return 1; }
+        src.sendFeedback(() -> Text.literal("[ItemMap] " + ids.size() + " image(s):"), false);
         for (String id : ids) {
             byte[] png = FrameManager.getImage(id);
             int kb = png != null ? png.length / 1024 : 0;
-            src.sendFeedback(() -> Text.literal("§7  §f" + id + " §7(" + kb + " KB)"), false);
+            src.sendFeedback(() -> Text.literal("  " + id + " (" + kb + " KB)"), false);
         }
-        return 1;
-    }
-
-    private static int cmdInfo(ServerCommandSource src, long frameId) {
-        FrameData frame = resolveFrame(src, frameId);
-        if (frame == null) return 0;
-        final FrameData fd = frame;
-        src.sendFeedback(() -> Text.literal(
-            "§6[ItemMap] Frame §e" + fd.entityId + "\n" +
-            "§7  Mode: §f"       + fd.mode.name()    + "\n" +
-            "§7  SpinSpeed: §f"  + fd.spinSpeed       + "\n" +
-            "§7  Scale: §f"      + fd.scale           + "\n" +
-            "§7  Padding: §f"    + fd.padPct + "%"   + "\n" +
-            "§7  Glow: §f"       + fd.glowing         + "\n" +
-            "§7  Invisible: §f"  + fd.invisible        + "\n" +
-            "§7  Label: §f"      + (fd.label != null ? fd.label : "(item name)") + "\n" +
-            "§7  BgColor: §f"    + String.format("#%08X", fd.bgColor) + "\n" +
-            "§7  Image: §f"      + (fd.customImageId != null ? fd.customImageId : "(vanilla)")
-        ), false);
         return 1;
     }
 
     private static int cmdUndo(ServerCommandSource src) {
-        if (!(src.getEntity() instanceof ServerPlayerEntity player)) {
-            src.sendError(Text.literal("§c[ItemMap] Must be a player."));
-            return 0;
-        }
-        FrameData restored = UndoManager.undo(player.getUuid());
-        if (restored == null) {
-            src.sendError(Text.literal("§c[ItemMap] Nothing to undo."));
-            return 0;
-        }
-        FrameManager.put(restored);
-        FrameManager.saveAll();
-        ItemMapMod.broadcastFrameUpdate(src.getServer(), restored);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Undone."), false);
+        if (!(src.getEntity() instanceof ServerPlayerEntity player)) return 0;
+        FrameData r = UndoManager.undo(player.getUuid());
+        if (r == null) { src.sendError(Text.literal("[ItemMap] Nothing to undo.")); return 0; }
+        FrameManager.put(r); FrameManager.saveAll();
+        ItemMapMod.broadcastFrameUpdate(src.getServer(), r);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Undone."), false);
         return 1;
     }
 
     private static int cmdRedo(ServerCommandSource src) {
-        if (!(src.getEntity() instanceof ServerPlayerEntity player)) {
-            src.sendError(Text.literal("§c[ItemMap] Must be a player."));
-            return 0;
-        }
-        FrameData restored = UndoManager.redo(player.getUuid());
-        if (restored == null) {
-            src.sendError(Text.literal("§c[ItemMap] Nothing to redo."));
-            return 0;
-        }
-        FrameManager.put(restored);
-        FrameManager.saveAll();
-        ItemMapMod.broadcastFrameUpdate(src.getServer(), restored);
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Redone."), false);
+        if (!(src.getEntity() instanceof ServerPlayerEntity player)) return 0;
+        FrameData r = UndoManager.redo(player.getUuid());
+        if (r == null) { src.sendError(Text.literal("[ItemMap] Nothing to redo.")); return 0; }
+        FrameManager.put(r); FrameManager.saveAll();
+        ItemMapMod.broadcastFrameUpdate(src.getServer(), r);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Redone."), false);
         return 1;
     }
 
     private static int cmdReload(ServerCommandSource src) {
-        src.sendFeedback(() -> Text.literal("§e[ItemMap] Reloading..."), false);
         FrameManager.clearAll();
         FrameManager.loadAll();
-
-        // Re-sync all online players
         List<FrameSyncPayload.FrameEntry> entries = new ArrayList<>();
-        for (FrameData d : FrameManager.all())
-            entries.add(FrameSyncPayload.fromData(d));
-        FrameSyncPayload syncPkt = new FrameSyncPayload(entries);
-
+        for (FrameData d : FrameManager.all()) entries.add(FrameSyncPayload.fromData(d));
+        FrameSyncPayload pkt = new FrameSyncPayload(entries);
         for (ServerPlayerEntity p : src.getServer().getPlayerManager().getPlayerList()) {
-            ServerPlayNetworking.send(p, syncPkt);
-            // Re-queue all images
+            ServerPlayNetworking.send(p, pkt);
             ConcurrentLinkedQueue<ImagePayload> queue = new ConcurrentLinkedQueue<>();
-            for (String imgId : FrameManager.allImageIds()) {
-                byte[] png = FrameManager.getImage(imgId);
-                if (png != null) queue.add(new ImagePayload(imgId, png));
+            for (String id : FrameManager.allImageIds()) {
+                byte[] png = FrameManager.getImage(id);
+                if (png != null) queue.add(new ImagePayload(id, png));
             }
             ItemMapMod.queueImagesForPlayer(p, queue);
         }
-
-        src.sendFeedback(() -> Text.literal("§a[ItemMap] Reloaded. " +
-            FrameManager.all().size() + " frame(s), " +
-            FrameManager.allImageIds().size() + " image(s)."), false);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Reloaded. " +
+            FrameManager.all().size() + " frames, " +
+            FrameManager.allImageIds().size() + " images."), false);
         return 1;
     }
 
     private static int cmdTutorial(ServerCommandSource src) {
         src.sendFeedback(() -> Text.literal(
-            "§6§l====== ItemMap Tutorial ======\n" +
-            "§e§lStep 1: §r§fPlace an item frame on a wall.\n" +
-            "§e§lStep 2: §r§fOpen your creative inventory -> §bItem Maps §ftab.\n" +
-            "§e§lStep 3: §r§fFind any item - there are two versions:\n" +
-            "  §7* §fDiamond Sword §7-> flat 2D icon fills the frame\n" +
-            "  §7* §fDiamond Sword 3D §7-> spins like a dropped item\n" +
-            "§e§lStep 4: §r§fPut the map item into the frame.\n" +
-            "  §7It will display the item texture automatically.\n" +
-            "§e§lStep 5: Use commands to customize (see /im help):\n" +
-            "  §b/im set mode §f<flat2d|render3d|spin3d> <frameId>\n" +
-            "  §b/im set spinspeed §f<0.1-100> <frameId>\n" +
-            "  §b/im set scale §f<0.1-2.0> <frameId>\n" +
-            "  §b/im set glow §f<true|false> <frameId>\n" +
-            "  §b/im set label §f<text|none> <frameId>\n" +
-            "  §b/im upload §f<id> <url>\n" +
-            "  §b/im undo §7/ §b/im redo\n" +
-            "§6§l=============================="
+            "[ItemMap] ====== Tutorial ======\n" +
+            "1. Place an item frame on a wall.\n" +
+            "2. Open Creative -> Item Maps tab.\n" +
+            "3. Find the item you want, e.g. Diamond Sword (flat) or Diamond Sword 3D (spinning).\n" +
+            "4. Put it in the frame. Done - it shows the item texture.\n" +
+            "5. Look at the frame and use /im commands to customize it.\n" +
+            "Type /im help for all commands."
         ), false);
         return 1;
     }
 
     private static int cmdHelp(ServerCommandSource src) {
         src.sendFeedback(() -> Text.literal(
-            "§6§l======== ItemMap Commands ========\n" +
-            "§7Type §e/im <command> §7to run. All commands need OP.\n" +
-            "§7Aliases: §e/im §7and §e/itemmap §7both work.\n" +
+            "[ItemMap] ====== Commands ======\n" +
+            "All commands: look at a frame first, then run the command.\n" +
             "\n" +
-            "§e§lDISPLAY MODE\n" +
-            "§e/im set mode <flat2d|render3d|spin3d> <frameId>\n" +
-            "§7  flat2d  §f-> fills the frame with the item's flat 2D texture\n" +
-            "§7  render3d §f-> shows the item as a 3D model, static\n" +
-            "§7  spin3d  §f-> item spins like a dropped item (default for 3D maps)\n" +
+            "/im mode <flat2d|spin3d|render3d>\n" +
+            "  flat2d   = item texture fills the whole frame (default)\n" +
+            "  spin3d   = item spins like a dropped item\n" +
+            "  render3d = item shown as 3D model, static\n" +
             "\n" +
-            "§e§lSPIN SPEED\n" +
-            "§e/im set spinspeed <speed> <frameId>\n" +
-            "§7  Controls how fast the item spins. §fDefault: 2.0\n" +
-            "§7  Range: 0.1 (very slow) to 100 (very fast)\n" +
+            "/im spin <speed>    - how fast it spins (0.1=slow, 2=default, 10=fast)\n" +
+            "/im scale <size>    - item size in frame (0.5=small, 1=default, 2=big)\n" +
+            "/im padding <0-50>  - space around the item in percent (0=fills frame)\n" +
+            "/im glow <true|false>      - adds a glow outline around the frame\n" +
+            "/im invisible <true|false> - hides the wooden frame border\n" +
+            "/im label <text>    - custom text below the item (use _ for spaces)\n" +
+            "/im label none      - remove the label\n" +
+            "/im bg <AARRGGBB>   - background color, e.g. 80FF0000 = semi-red\n" +
+            "/im bg 00000000     - remove background\n" +
+            "/im image <id>      - use a custom uploaded image instead of vanilla\n" +
+            "/im image none      - go back to vanilla item texture\n" +
             "\n" +
-            "§e§lSCALE\n" +
-            "§e/im set scale <size> <frameId>\n" +
-            "§7  Makes the displayed item bigger or smaller inside the frame.\n" +
-            "§7  Range: §f0.1 §7(tiny) to §f2.0 §7(double size). Default: §f1.0\n" +
+            "/im upload <id> <url>  - download a PNG and save it as <id>\n" +
+            "/im images             - list all uploaded images\n" +
             "\n" +
-            "§e§lPADDING\n" +
-            "§e/im set padding <percent> <frameId>\n" +
-            "§7  Adds empty space around the item. §f0 §7= fills frame edge to edge.\n" +
-            "§7  Range: 0 to 50 (percent of frame size)\n" +
+            "/im reset   - reset frame to defaults\n" +
+            "/im remove  - delete all ItemMap data from this frame\n" +
+            "/im info    - show current settings for this frame\n" +
+            "/im list    - list all configured frames\n" +
+            "/im undo    - undo last change\n" +
+            "/im redo    - redo last undone change\n" +
+            "/im reload  - reload from disk and re-sync all players\n" +
+            "/im tutorial - beginner guide\n" +
             "\n" +
-            "§e§lGLOW\n" +
-            "§e/im set glow <true|false> <frameId>\n" +
-            "§7  Adds a bright yellow outline around the frame.\n" +
-            "\n" +
-            "§e§lINVISIBLE FRAME\n" +
-            "§e/im set invisible <true|false> <frameId>\n" +
-            "§7  Hides the wooden frame border - only the item shows.\n" +
-            "\n" +
-            "§e§lLABEL\n" +
-            "§e/im set label <text> <frameId>\n" +
-            "§7  Sets a custom name shown below the item. Use underscores for spaces.\n" +
-            "§7  Example: §e/im set label My_Cool_Item 12345\n" +
-            "§e/im set label none <frameId> §7- removes the label\n" +
-            "\n" +
-            "§e§lBACKGROUND COLOR\n" +
-            "§e/im set bgcolor <AARRGGBB> <frameId>\n" +
-            "§7  Sets a background color behind the item. Format: 8-digit hex.\n" +
-            "§7  First 2 digits = opacity (FF=fully visible, 00=transparent).\n" +
-            "§7  Example: §e/im set bgcolor 80FF0000 §7= semi-transparent red\n" +
-            "\n" +
-            "§e§lCUSTOM IMAGE\n" +
-            "§e/im upload <imageId> <url>\n" +
-            "§7  Downloads a PNG from a URL and saves it as a custom texture.\n" +
-            "§7  Example: §e/im upload mylogo https://i.imgur.com/abc.png\n" +
-            "§e/im set image <imageId> <frameId>\n" +
-            "§7  Applies a previously uploaded image to the frame.\n" +
-            "§e/im set image none <frameId> §7- reverts to vanilla item texture\n" +
-            "§e/im images §7- lists all uploaded images and their sizes\n" +
-            "\n" +
-            "§e§lINFO & MANAGEMENT\n" +
-            "§e/im info <frameId> §7- shows all current settings for a frame\n" +
-            "§e/im list §7- lists all frames that have ItemMap settings applied\n" +
-            "§e/im reset <frameId> §7- resets frame back to all default settings\n" +
-            "§e/im remove <frameId> §7- removes ItemMap data from a frame entirely\n" +
-            "\n" +
-            "§e§lUNDO / REDO\n" +
-            "§e/im undo §7- undoes your last change (up to 50 steps)\n" +
-            "§e/im redo §7- redoes what you just undid\n" +
-            "\n" +
-            "§e§lOTHER\n" +
-            "§e/im reload §7- reloads all frame data from disk and re-syncs all players\n" +
-            "§e/im tutorial §7- shows a beginner step-by-step guide\n" +
-            "§e/im help §7- shows this list\n" +
-            "§6§l==================================="
+            "Aliases: /im and /itemmap both work."
         ), false);
         return 1;
     }
