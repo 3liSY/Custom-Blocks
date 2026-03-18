@@ -148,7 +148,7 @@ public class ItemMapScreen extends Screen {
             .dimensions(px + 10, py + PANEL_H - 28, 70, 20).build());
 
         addDrawableChild(ButtonWidget.builder(Text.literal("Reset"),
-            b -> sendCommand("reset " + editing.entityId))
+            b -> sendCommand("reset"))
             .dimensions(px + 90, py + PANEL_H - 28, 70, 20).build());
 
         addDrawableChild(ButtonWidget.builder(Text.literal("Undo"),
@@ -235,17 +235,21 @@ public class ItemMapScreen extends Screen {
 
         // Send commands to server
         long eid = editing.entityId;
-        sendCommand("set mode "      + editing.mode.name().toLowerCase().replace("_","") + " " + eid);
-        sendCommand("set scale "     + editing.scale     + " " + eid);
-        sendCommand("set spinspeed " + editing.spinSpeed  + " " + eid);
-        sendCommand("set padding "   + editing.padPct     + " " + eid);
-        sendCommand("set bgcolor "   + String.format("%08X", editing.bgColor) + " " + eid);
-        sendCommand("set glow "      + editing.glowing    + " " + eid);
-        sendCommand("set invisible " + editing.invisible  + " " + eid);
+        sendCommand("mode "      + editing.mode.name().toLowerCase().replace("_", ""));
+        sendCommand("scale "     + editing.scale);
+        sendCommand("spin "      + editing.spinSpeed);
+        sendCommand("padding "   + editing.padPct);
+        sendCommand("bg "        + String.format("%08X", editing.bgColor));
+        sendCommand("glow "      + editing.glowing);
+        sendCommand("invisible " + editing.invisible);
         if (editing.label != null)
-            sendCommand("set label " + editing.label.replace(" ", "_") + " " + eid);
+            sendCommand("label " + editing.label.replace(" ", "_"));
+        else
+            sendCommand("label none");
         if (editing.customImageId != null)
-            sendCommand("set image " + editing.customImageId + " " + eid);
+            sendCommand("image " + editing.customImageId);
+        else
+            sendCommand("image none");
 
         close();
     }

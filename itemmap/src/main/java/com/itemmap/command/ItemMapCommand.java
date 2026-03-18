@@ -5,6 +5,7 @@ import com.itemmap.manager.FrameData;
 import com.itemmap.manager.FrameManager;
 import com.itemmap.manager.UndoManager;
 import com.itemmap.network.FrameSyncPayload;
+import com.itemmap.network.FrameUpdatePayload;
 import com.itemmap.network.ImagePayload;
 import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.mojang.brigadier.arguments.FloatArgumentType;
@@ -53,12 +54,16 @@ public class ItemMapCommand {
             .requires(src -> src.hasPermissionLevel(2))
             .executes(ctx -> cmdHelp(ctx.getSource()))
 
-            // /im mode <flat2d|spin3d|render3d>
+            // /im mode <flat2d|spin3d|render3d> [frameId]
             .then(CommandManager.literal("mode")
                 .then(CommandManager.argument("mode", StringArgumentType.word())
                     .suggests(MODE_SUGGESTIONS)
                     .executes(ctx -> cmdMode(ctx.getSource(),
-                        StringArgumentType.getString(ctx, "mode")))
+                        StringArgumentType.getString(ctx, "mode"), -1))
+                    .then(CommandManager.argument("frameId", StringArgumentType.word())
+                        .executes(ctx -> cmdMode(ctx.getSource(),
+                            StringArgumentType.getString(ctx, "mode"),
+                            parseLong(StringArgumentType.getString(ctx, "frameId")))))
                 )
             )
 
@@ -178,6 +183,11 @@ public class ItemMapCommand {
                 .executes(ctx -> cmdReload(ctx.getSource()))
             )
 
+            // /im gui - open the settings GUI
+            .then(CommandManager.literal("gui")
+                .executes(ctx -> cmdGui(ctx.getSource()))
+            )
+
             // /im tutorial
             .then(CommandManager.literal("tutorial")
                 .executes(ctx -> cmdTutorial(ctx.getSource()))
@@ -189,25 +199,48 @@ public class ItemMapCommand {
             );
     }
 
-    // ── Frame resolver: always target the frame you are looking at ────────────
+    private static long parseLong(String s) {
+        try { return Long.parseLong(s); } catch (NumberFormatException e) { return -1; }
+    }
+
+    // __ Frame resolver: always target the frame you are looking at ────────────
 
     private static FrameData lookAtFrame(ServerCommandSource src) {
+        return lookAtFrame(src, -1);
+    }
+
+    private static FrameData lookAtFrame(ServerCommandSource src, long explicitId) {
+        // If explicit ID given, use it directly
+        if (explicitId > 0) {
+            return FrameManager.getOrCreate(explicitId);
+        }
         if (!(src.getEntity() instanceof ServerPlayerEntity player)) {
             src.sendError(Text.literal("[ItemMap] Must be a player."));
             return null;
         }
-        Vec3d eye    = player.getEyePos();
-        Vec3d look   = player.getRotationVec(1.0f);
-        Vec3d reach  = eye.add(look.multiply(6.0));
-        Box   search = player.getBoundingBox().stretch(look.multiply(6.0)).expand(1.0);
+        Vec3d eye   = player.getEyePos();
+        Vec3d look  = player.getRotationVec(1.0f);
+        Vec3d reach = eye.add(look.multiply(8.0));
+        // Large search box - item frames are tiny entities
+        Box search  = new Box(eye, reach).expand(1.5);
 
         ItemFrameEntity closest = null;
-        double bestDist = 7.0;
+        double bestDist = Double.MAX_VALUE;
         for (net.minecraft.entity.Entity e : player.getWorld().getOtherEntities(player, search)) {
             if (!(e instanceof ItemFrameEntity ife)) continue;
-            java.util.Optional<Vec3d> hit = ife.getBoundingBox().expand(0.3).raycast(eye, reach);
+            // Expand hitbox significantly - item frames are 1 pixel thick
+            java.util.Optional<Vec3d> hit = ife.getBoundingBox().expand(0.5).raycast(eye, reach);
             if (hit.isPresent()) {
                 double d = eye.squaredDistanceTo(hit.get());
+                if (d < bestDist) { bestDist = d; closest = ife; }
+            }
+        }
+        // Fallback: just pick closest item frame within 6 blocks if raycast missed
+        if (closest == null) {
+            Box fallback = new Box(eye, reach).expand(0.5);
+            for (net.minecraft.entity.Entity e : player.getWorld().getOtherEntities(player, fallback)) {
+                if (!(e instanceof ItemFrameEntity ife)) continue;
+                double d = eye.squaredDistanceTo(ife.getPos());
                 if (d < bestDist) { bestDist = d; closest = ife; }
             }
         }
@@ -229,7 +262,10 @@ public class ItemMapCommand {
     // ── Commands ──────────────────────────────────────────────────────────────
 
     private static int cmdMode(ServerCommandSource src, String modeStr) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdMode(src, modeStr, -1);
+    }
+    private static int cmdMode(ServerCommandSource src, String modeStr, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         FrameData before = f.copy();
         switch (modeStr.toLowerCase()) {
             case "flat2d"   -> f.mode = FrameData.DisplayMode.FLAT_2D;
@@ -243,7 +279,10 @@ public class ItemMapCommand {
     }
 
     private static int cmdSpin(ServerCommandSource src, float speed) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdSpin(src, speed, -1);
+    }
+    private static int cmdSpin(ServerCommandSource src, float speed, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         FrameData before = f.copy();
         f.spinSpeed = speed;
         save(src, before, f);
@@ -252,7 +291,10 @@ public class ItemMapCommand {
     }
 
     private static int cmdScale(ServerCommandSource src, float size) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdScale(src, size, -1);
+    }
+    private static int cmdScale(ServerCommandSource src, float size, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         FrameData before = f.copy();
         f.scale = size;
         save(src, before, f);
@@ -261,7 +303,10 @@ public class ItemMapCommand {
     }
 
     private static int cmdPadding(ServerCommandSource src, float pct) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdPadding(src, pct, -1);
+    }
+    private static int cmdPadding(ServerCommandSource src, float pct, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         FrameData before = f.copy();
         f.padPct = pct;
         save(src, before, f);
@@ -270,7 +315,10 @@ public class ItemMapCommand {
     }
 
     private static int cmdGlow(ServerCommandSource src, boolean on) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdGlow(src, on, -1);
+    }
+    private static int cmdGlow(ServerCommandSource src, boolean on, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         FrameData before = f.copy();
         f.glowing = on;
         save(src, before, f);
@@ -279,7 +327,10 @@ public class ItemMapCommand {
     }
 
     private static int cmdInvisible(ServerCommandSource src, boolean on) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdInvisible(src, on, -1);
+    }
+    private static int cmdInvisible(ServerCommandSource src, boolean on, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         FrameData before = f.copy();
         f.invisible = on;
         save(src, before, f);
@@ -288,7 +339,10 @@ public class ItemMapCommand {
     }
 
     private static int cmdLabel(ServerCommandSource src, String text) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdLabel(src, text, -1);
+    }
+    private static int cmdLabel(ServerCommandSource src, String text, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         FrameData before = f.copy();
         f.label = text.equalsIgnoreCase("none") ? null : text.replace("_", " ");
         save(src, before, f);
@@ -298,7 +352,10 @@ public class ItemMapCommand {
     }
 
     private static int cmdBg(ServerCommandSource src, String hex) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdBg(src, hex, -1);
+    }
+    private static int cmdBg(ServerCommandSource src, String hex, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         FrameData before = f.copy();
         try {
             f.bgColor = (int) Long.parseLong(hex.replace("#",""), 16);
@@ -312,7 +369,10 @@ public class ItemMapCommand {
     }
 
     private static int cmdImage(ServerCommandSource src, String imageId) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdImage(src, imageId, -1);
+    }
+    private static int cmdImage(ServerCommandSource src, String imageId, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         if (!imageId.equalsIgnoreCase("none") && FrameManager.getImage(imageId) == null) {
             src.sendError(Text.literal("[ItemMap] Image '" + imageId + "' not found. Use /im upload first."));
             return 0;
@@ -356,7 +416,10 @@ public class ItemMapCommand {
     }
 
     private static int cmdReset(ServerCommandSource src) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdReset(src, -1);
+    }
+    private static int cmdReset(ServerCommandSource src, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         FrameData before = f.copy();
         f.mode = FrameData.DisplayMode.FLAT_2D;
         f.spinSpeed = 2f; f.scale = 1f; f.padPct = 0f;
@@ -368,7 +431,10 @@ public class ItemMapCommand {
     }
 
     private static int cmdRemove(ServerCommandSource src) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdRemove(src, -1);
+    }
+    private static int cmdRemove(ServerCommandSource src, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         long eid = f.entityId;
         FrameManager.remove(eid);
         FrameManager.saveAll();
@@ -378,7 +444,10 @@ public class ItemMapCommand {
     }
 
     private static int cmdInfo(ServerCommandSource src) {
-        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        return cmdInfo(src, -1);
+    }
+    private static int cmdInfo(ServerCommandSource src, long frameId) {
+        FrameData f = lookAtFrame(src, frameId); if (f == null) return 0;
         src.sendFeedback(() -> Text.literal(
             "[ItemMap] Frame " + f.entityId + "\n" +
             "  Mode:      " + f.mode.name() + "\n" +
@@ -461,6 +530,21 @@ public class ItemMapCommand {
         return 1;
     }
 
+    private static int cmdGui(ServerCommandSource src) {
+        if (!(src.getEntity() instanceof ServerPlayerEntity player)) {
+            src.sendError(Text.literal("[ItemMap] Must be a player."));
+            return 0;
+        }
+        // Send packet to open GUI on client - reuse FrameUpdatePayload with open_gui action
+        // Look at current frame if any, otherwise open general GUI
+        FrameData f = lookAtFrame(src);
+        long frameId = f != null ? f.entityId : -1;
+        FrameUpdatePayload pkt = new FrameUpdatePayload(
+            "open_gui", frameId, "FLAT_2D", 2f, 1f, 0f, false, null, 0, null, false);
+        ServerPlayNetworking.send(player, pkt);
+        return 1;
+    }
+
     private static int cmdTutorial(ServerCommandSource src) {
         src.sendFeedback(() -> Text.literal(
             "[ItemMap] ====== Tutorial ======\n" +
@@ -506,6 +590,7 @@ public class ItemMapCommand {
             "/im undo    - undo last change\n" +
             "/im redo    - redo last undone change\n" +
             "/im reload  - reload from disk and re-sync all players\n" +
+            "/im gui     - open the settings GUI for the frame you are looking at\n" +
             "/im tutorial - beginner guide\n" +
             "\n" +
             "Aliases: /im and /itemmap both work."

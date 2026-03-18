@@ -42,6 +42,9 @@ public class ItemMapClient implements ClientModInitializer {
 
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
 
+            // Advance global GUI spin angle for creative tab / inventory
+            FrameRenderManager.tickGuiSpin();
+
             // Open GUI via keybind
             while (openGuiKey.wasPressed()) {
                 if (client.currentScreen == null)
@@ -83,6 +86,12 @@ public class ItemMapClient implements ClientModInitializer {
                 if ("remove".equals(payload.action())) {
                     FrameManager.remove(payload.entityId());
                     FrameRenderManager.removeSpin(payload.entityId());
+                    return;
+                }
+                if ("open_gui".equals(payload.action())) {
+                    long fid = payload.entityId();
+                    context.client().execute(() ->
+                        context.client().setScreen(new ItemMapScreen(fid)));
                     return;
                 }
                 FrameData d = FrameManager.has(payload.entityId())
