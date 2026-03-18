@@ -24,14 +24,14 @@ public class ItemRendererMixin {
     private static final ThreadLocal<Boolean> RENDERING = ThreadLocal.withInitial(() -> false);
 
     @Inject(
-        method = "renderItem(Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/render/model/json/ModelTransformationMode;ZLnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;Lnet/minecraft/world/World;II)V",
+        method = "renderItem(Lnet/minecraft/item/ItemStack;Lnet/minecraft/client/render/model/json/ModelTransformationMode;IILnet/minecraft/client/util/math/MatrixStack;Lnet/minecraft/client/render/VertexConsumerProvider;Lnet/minecraft/world/World;I)V",
         at = @At("HEAD"),
         cancellable = true
     )
     private void onRenderItem(ItemStack stack, ModelTransformationMode mode,
-                               boolean leftHanded, MatrixStack matrices,
+                               int light, int overlay, MatrixStack matrices,
                                VertexConsumerProvider vcp, World world,
-                               int light, int overlay, CallbackInfo ci) {
+                               int seed, CallbackInfo ci) {
 
         // Prevent recursion
         if (RENDERING.get()) return;
@@ -50,7 +50,7 @@ public class ItemRendererMixin {
 
         RENDERING.set(true);
         try {
-            ItemMapRenderer.renderMapItem(stack, targetId, is3D, mode, leftHanded,
+            ItemMapRenderer.renderMapItem(stack, targetId, is3D, mode,
                 matrices, vcp, world, light, overlay);
         } finally {
             RENDERING.set(false);

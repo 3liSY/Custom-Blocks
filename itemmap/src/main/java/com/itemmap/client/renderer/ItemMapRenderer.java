@@ -26,7 +26,7 @@ public class ItemMapRenderer {
      * Called from ItemRendererMixin — re-entrancy is already guarded there.
      */
     public static void renderMapItem(ItemStack stack, String targetId, boolean is3D,
-                                      ModelTransformationMode mode, boolean leftHanded,
+                                      ModelTransformationMode mode,
                                       MatrixStack matrices, VertexConsumerProvider vcp,
                                       World world, int light, int overlay) {
         MinecraftClient mc = MinecraftClient.getInstance();
@@ -38,7 +38,7 @@ public class ItemMapRenderer {
                       || mode == ModelTransformationMode.THIRD_PERSON_LEFT_HAND;
 
         if (isHeld) {
-            renderHeld(targetId, is3D, mode, leftHanded, matrices, vcp, world, light, overlay);
+            renderHeld(targetId, is3D, mode, matrices, vcp, world, light, overlay);
         } else {
             // GUI, HEAD, NONE, etc — treat all as inventory display
             renderGui(targetId, is3D, matrices, vcp, world, light, overlay);
@@ -48,15 +48,14 @@ public class ItemMapRenderer {
     // ── Held in hand ──────────────────────────────────────────────────────────
 
     private static void renderHeld(String targetId, boolean is3D,
-                                    ModelTransformationMode mode, boolean leftHanded,
+                                    ModelTransformationMode mode,
                                     MatrixStack matrices, VertexConsumerProvider vcp,
                                     World world, int light, int overlay) {
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc == null) return;
 
         // Step 1: render vanilla filled_map in hand position (handles arm transform)
-        mc.getItemRenderer().renderItem(MAP_STACK, mode, leftHanded,
-            matrices, vcp, world, light, overlay);
+        mc.getItemRenderer().renderItem(MAP_STACK, mode, light, overlay, matrices, vcp, world, 0);
 
         // Step 2: overlay item on map face
         // The map face in hand space sits at z~0.03, centered, scale ~0.8
@@ -84,9 +83,7 @@ public class ItemMapRenderer {
         if (mc == null) return;
 
         // Step 1: render vanilla filled_map as background — uses correct GUI transform
-        mc.getItemRenderer().renderItem(MAP_STACK,
-            ModelTransformationMode.GUI,
-            false, matrices, vcp, world, light, overlay);
+        mc.getItemRenderer().renderItem(MAP_STACK, ModelTransformationMode.GUI, light, overlay, matrices, vcp, world, 0);
 
         // Step 2: overlay item on top, slightly in front (z offset)
         matrices.push();
@@ -138,8 +135,6 @@ public class ItemMapRenderer {
         Item item = Registries.ITEM.get(Identifier.of(targetId));
         if (item == null) return;
 
-        mc.getItemRenderer().renderItem(new ItemStack(item),
-            ModelTransformationMode.GUI,
-            false, matrices, vcp, world, light, overlay);
+        mc.getItemRenderer().renderItem(new ItemStack(item), ModelTransformationMode.GUI, light, overlay, matrices, vcp, world, 0);
     }
 }
