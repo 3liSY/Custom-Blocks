@@ -15,7 +15,7 @@ import java.util.List;
 public record FrameSyncPayload(List<FrameEntry> frames) implements CustomPayload {
 
     public static final Id<FrameSyncPayload> ID =
-            new Id<>(Identifier.of("itemmap", "frame_sync"));
+            new Id<>(Identifier.of("itemmap", "frame_sync_v2"));
 
     public record FrameEntry(
         long   entityId,

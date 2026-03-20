@@ -23,7 +23,7 @@ public record FrameUpdatePayload(
 ) implements CustomPayload {
 
     public static final Id<FrameUpdatePayload> ID =
-            new Id<>(Identifier.of("itemmap", "frame_update"));
+            new Id<>(Identifier.of("itemmap", "frame_update_v2"));
 
     public static final PacketCodec<PacketByteBuf, FrameUpdatePayload> CODEC = PacketCodec.of(
         (v, buf) -> {

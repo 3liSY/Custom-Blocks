@@ -12,7 +12,7 @@ import net.minecraft.util.Identifier;
 public record ImagePayload(String imageId, byte[] png) implements CustomPayload {
 
     public static final Id<ImagePayload> ID =
-            new Id<>(Identifier.of("itemmap", "image"));
+            new Id<>(Identifier.of("itemmap", "image_v2"));
 
     public static final PacketCodec<PacketByteBuf, ImagePayload> CODEC = PacketCodec.of(
         (v, buf) -> {
