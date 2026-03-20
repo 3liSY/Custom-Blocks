@@ -22,6 +22,7 @@ import net.minecraft.text.Text;
 import net.minecraft.util.math.Box;
 import net.minecraft.util.math.Vec3d;
 
+import java.io.File;
 import java.net.URI;
 import java.net.http.*;
 import java.time.Duration;
@@ -186,6 +187,27 @@ public class ItemMapCommand {
             // /im gui - open the settings GUI
             .then(CommandManager.literal("gui")
                 .executes(ctx -> cmdGui(ctx.getSource()))
+            )
+
+            // /im color <hex> - change text/letter color on frame
+            .then(CommandManager.literal("color")
+                .then(CommandManager.argument("hex", StringArgumentType.word())
+                    .executes(ctx -> cmdColor(ctx.getSource(),
+                        StringArgumentType.getString(ctx, "hex")))
+                )
+            )
+
+            // /im changebg <hex> - change background color on frame
+            .then(CommandManager.literal("changebg")
+                .then(CommandManager.argument("hex", StringArgumentType.word())
+                    .executes(ctx -> cmdChangeBg(ctx.getSource(),
+                        StringArgumentType.getString(ctx, "hex")))
+                )
+            )
+
+            // /im importfolder - import all PNGs from config/itemmap/import/
+            .then(CommandManager.literal("importfolder")
+                .executes(ctx -> cmdImportFolder(ctx.getSource()))
             )
 
             // /im tutorial
@@ -530,6 +552,72 @@ public class ItemMapCommand {
         return 1;
     }
 
+    private static int cmdColor(ServerCommandSource src, String hex) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        FrameData before = f.copy();
+        try {
+            f.bgColor = (f.bgColor & 0xFF000000) | (int)(Long.parseLong(hex.replace("#",""), 16) & 0x00FFFFFF);
+        } catch (NumberFormatException e) {
+            src.sendError(Text.literal("[ItemMap] Bad hex. Example: FF0000 = red, 000000 = black"));
+            return 0;
+        }
+        save(src, before, f);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Color set."), false);
+        return 1;
+    }
+
+    private static int cmdChangeBg(ServerCommandSource src, String hex) {
+        FrameData f = lookAtFrame(src); if (f == null) return 0;
+        FrameData before = f.copy();
+        try {
+            String clean = hex.replace("#","");
+            // Support both RRGGBB (fully opaque) and AARRGGBB
+            if (clean.length() == 6) clean = "FF" + clean;
+            f.bgColor = (int) Long.parseLong(clean, 16);
+        } catch (NumberFormatException e) {
+            src.sendError(Text.literal("[ItemMap] Bad hex. Example: FF0000 = red bg, 00000000 = no bg"));
+            return 0;
+        }
+        save(src, before, f);
+        src.sendFeedback(() -> Text.literal("[ItemMap] Background color set."), false);
+        return 1;
+    }
+
+    private static int cmdImportFolder(ServerCommandSource src) {
+        File dir = new File("config/itemmap/import");
+        if (!dir.exists()) {
+            dir.mkdirs();
+            src.sendFeedback(() -> Text.literal(
+                "[ItemMap] Created config/itemmap/import/ - drop PNG files there and run /im importfolder again."), false);
+            return 1;
+        }
+        File[] files = dir.listFiles((d, name) -> name.toLowerCase().endsWith(".png"));
+        if (files == null || files.length == 0) {
+            src.sendFeedback(() -> Text.literal(
+                "[ItemMap] No PNG files found in config/itemmap/import/"), false);
+            return 1;
+        }
+        int imported = 0;
+        int failed = 0;
+        for (File f : files) {
+            String imageId = f.getName().replace(".png", "").replace(".PNG", "");
+            try {
+                byte[] png = java.nio.file.Files.readAllBytes(f.toPath());
+                FrameManager.putImage(imageId, png);
+                ItemMapMod.broadcastImage(src.getServer(), imageId, png);
+                imported++;
+            } catch (Exception e) {
+                failed++;
+                ItemMapMod.LOGGER.error("[ItemMap] Failed to import {}: {}", f.getName(), e.getMessage());
+            }
+        }
+        if (imported > 0) FrameManager.saveAll();
+        final int imp = imported, fail = failed;
+        src.sendFeedback(() -> Text.literal(
+            "[ItemMap] Imported " + imp + " image(s)" + (fail > 0 ? ", " + fail + " failed." : ".")), false);
+        return 1;
+    }
+
     private static int cmdGui(ServerCommandSource src) {
         if (!(src.getEntity() instanceof ServerPlayerEntity player)) {
             src.sendError(Text.literal("[ItemMap] Must be a player."));
@@ -583,6 +671,8 @@ public class ItemMapCommand {
             "/im upload <id> <url>  - download a PNG and save it as <id>\n" +
             "/im images             - list all uploaded images\n" +
             "\n" +
+            "/im color <RRGGBB>    - set letter/item color on the frame\n" +
+            "/im changebg <RRGGBB> - set background color (add AA prefix for transparency)\n" +
             "/im reset   - reset frame to defaults\n" +
             "/im remove  - delete all ItemMap data from this frame\n" +
             "/im info    - show current settings for this frame\n" +

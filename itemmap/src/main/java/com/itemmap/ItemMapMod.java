@@ -63,7 +63,7 @@ public class ItemMapMod implements ModInitializer {
         Registry.register(Registries.ITEM_GROUP, ITEM_MAP_TAB,
             FabricItemGroup.builder()
                 .displayName(Text.literal("Item Maps"))
-                .icon(() -> ItemMapItem.create3D(Items.DIAMOND))
+                .icon(() -> ItemMapItem.createFlat(Items.DIAMOND))
                 .entries((ctx, entries) -> {
                     List<Item> allItems = new ArrayList<>(Registries.ITEM.stream().toList());
                     allItems.sort(Comparator.comparing(i ->
@@ -72,7 +72,6 @@ public class ItemMapMod implements ModInitializer {
                         if (item == Items.AIR) continue;
                         if (item == ITEM_MAP_ITEM) continue;
                         entries.add(ItemMapItem.createFlat(item));
-                        entries.add(ItemMapItem.create3D(item));
                     }
                 })
                 .build()
