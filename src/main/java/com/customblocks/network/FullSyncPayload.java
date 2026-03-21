@@ -12,7 +12,7 @@ import java.util.List;
 public record FullSyncPayload(List<SlotEntry> entries, byte[] tabIconTexture) implements CustomPayload {
 
     public static final Id<FullSyncPayload> ID =
-            new Id<>(Identifier.of("customblocks", "full_sync"));
+            new Id<>(Identifier.of("customblocks", "full_sync_v2"));
 
     public record SlotEntry(
             int    index,
@@ -53,6 +53,7 @@ public record FullSyncPayload(List<SlotEntry> entries, byte[] tabIconTexture) im
                             tex.length > 0 ? tex : null, lightLevel, hardness, soundType));
                 }
                 byte[] tabIcon = buf.readByteArray(10_485_760);
+                if (buf.readableBytes() > 0) buf.skipBytes(buf.readableBytes());
                 return new FullSyncPayload(entries, tabIcon.length > 0 ? tabIcon : null);
             }
     );

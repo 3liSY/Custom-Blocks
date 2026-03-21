@@ -23,7 +23,7 @@ public record FaceUpdatePayload(
 ) implements CustomPayload {
 
     public static final Id<FaceUpdatePayload> ID =
-            new Id<>(Identifier.of("customblocks", "face_update"));
+            new Id<>(Identifier.of("customblocks", "face_update_v2"));
 
     public static final PacketCodec<PacketByteBuf, FaceUpdatePayload> CODEC = PacketCodec.of(
             (value, buf) -> {
@@ -48,6 +48,7 @@ public record FaceUpdatePayload(
                     byte[] data = buf.readByteArray(10_485_760);
                     faces.put(key, data);
                 }
+                if (buf.readableBytes() > 0) buf.skipBytes(buf.readableBytes());
                 return new FaceUpdatePayload(action, index,
                         customId.isEmpty() ? null : customId, faces);
             }
