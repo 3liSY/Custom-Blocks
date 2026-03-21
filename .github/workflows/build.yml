@@ -24,7 +24,7 @@ jobs:
             -o gradle/wrapper/gradle-wrapper.jar
 
       - name: Build
-        run: chmod +x gradlew && ./gradlew build
+        run: chmod +x gradlew && ./gradlew build --no-build-cache --rerun-tasks
 
       - name: Upload JAR
         uses: actions/upload-artifact@v4
