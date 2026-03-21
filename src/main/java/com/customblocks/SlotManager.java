@@ -404,7 +404,7 @@ public class SlotManager {
             if (d.texture != null && d.texture.length > 0) clientValid.add(d.slotKey() + ".png");
             for (String face : d.faceTextures.keySet()) clientValid.add(d.slotKey() + "_" + face + ".png");
         }
-        File[] clientPngs = dir.listFiles((d2, n) -> n.matches("slot_\d+(_[a-z]+)?\.png"));
+        File[] clientPngs = dir.listFiles((d2, n) -> n.matches("slot_\\d+(_[a-z]+)?\\.png"));
         if (clientPngs != null) {
             for (File f : clientPngs) {
                 if (!clientValid.contains(f.getName())) {
