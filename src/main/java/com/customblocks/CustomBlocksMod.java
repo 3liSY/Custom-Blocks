@@ -66,7 +66,7 @@ public class CustomBlocksMod implements ModInitializer {
             SlotBlock       block = new SlotBlock(i, settings);
             Identifier      id    = Identifier.of(MOD_ID, "slot_" + i);
             SlotBlock.SlotItem item  = new SlotBlock.SlotItem(block,
-                    new Item.Settings().registryKey(RegistryKey.of(RegistryKeys.ITEM, id)));
+                    new Item.Settings());
 
             Registry.register(Registries.BLOCK, id, block);
             Registry.register(Registries.ITEM, id, item);
