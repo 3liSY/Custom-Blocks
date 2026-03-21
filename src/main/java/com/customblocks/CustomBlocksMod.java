@@ -3,7 +3,6 @@ package com.customblocks;
 import com.customblocks.block.SlotBlock;
 import com.customblocks.item.ColorSquareItem;
 import com.customblocks.command.CustomBlockCommand;
-import com.customblocks.network.FaceUpdatePayload;
 import com.customblocks.network.FullSyncPayload;
 import com.customblocks.network.SlotUpdatePayload;
 import net.fabricmc.api.ModInitializer;
@@ -88,7 +87,6 @@ public class CustomBlocksMod implements ModInitializer {
         // Network
         PayloadTypeRegistry.playS2C().register(FullSyncPayload.ID, FullSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SlotUpdatePayload.ID, SlotUpdatePayload.CODEC);
-        PayloadTypeRegistry.playS2C().register(FaceUpdatePayload.ID, FaceUpdatePayload.CODEC);
 
         // Creative tab
         Registry.register(Registries.ITEM_GROUP, CUSTOM_BLOCKS_TAB,
@@ -146,14 +144,6 @@ public class CustomBlocksMod implements ModInitializer {
             PENDING_TEXTURES.put(uuid, queue);
             SEND_DELAY.put(uuid, DELAY_TICKS);
 
-            // Send face overrides immediately (separate channel, small packets)
-            for (SlotManager.SlotData d : SlotManager.allSlots()) {
-                if (d.hasFaces()) {
-                    ServerPlayNetworking.send(handler.player,
-                        new FaceUpdatePayload("setface", d.index, d.customId,
-                            new java.util.HashMap<>(d.faceTextures)));
-                }
-            }
         });
 
         // On disconnect: clean up
@@ -192,13 +182,6 @@ public class CustomBlocksMod implements ModInitializer {
         SlotManager.loadAll();
 
         LOGGER.info("[CustomBlocks] Initialized. {} slot(s) loaded.", SlotManager.usedSlots());
-    }
-
-    public static void broadcastFaceUpdate(MinecraftServer server, FaceUpdatePayload payload) {
-        // Face operations use a separate channel — old clients simply ignore unknown channels
-        for (var player : server.getPlayerManager().getPlayerList()) {
-            ServerPlayNetworking.send(player, payload);
-        }
     }
 
     public static void broadcastUpdate(MinecraftServer server, SlotUpdatePayload payload) {

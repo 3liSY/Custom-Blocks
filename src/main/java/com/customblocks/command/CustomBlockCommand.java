@@ -3,7 +3,6 @@ package com.customblocks.command;
 import com.customblocks.CustomBlocksMod;
 import com.customblocks.SlotManager;
 import com.customblocks.block.SlotBlock;
-import com.customblocks.network.FaceUpdatePayload;
 import com.customblocks.network.SlotUpdatePayload;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -632,13 +631,6 @@ public class CustomBlockCommand {
                     if (d == null) { src.sendError(Text.literal("§c[CustomBlocks] '" + id + "' was deleted before texture arrived.")); return; }
                     SlotManager.setFaceTexture(id, face, bytes);
                     SlotManager.saveAll();
-                    // Re-fetch after mutation so we have the updated object
-                    SlotManager.SlotData updated = SlotManager.getById(id);
-                    if (updated == null) return; // extremely unlikely but guard anyway
-                    Map<String, byte[]> faces = new java.util.HashMap<>();
-                    faces.put(face, bytes);
-                    CustomBlocksMod.broadcastFaceUpdate(server,
-                            new FaceUpdatePayload("setface", updated.index, id, faces));
                     src.sendMessage(Text.literal("§a[CustomBlocks] " + face + " face set on '" + id + "'."));
                 });
             } catch (Exception e) {
@@ -657,10 +649,6 @@ public class CustomBlockCommand {
         if (d == null) { src.sendError(notFound(id)); return 0; }
         SlotManager.clearFaceTexture(id, face);
         SlotManager.saveAll();
-        Map<String, byte[]> faces = new java.util.HashMap<>();
-        faces.put(face, new byte[0]); // empty = sentinel for clearface
-        CustomBlocksMod.broadcastFaceUpdate(src.getServer(),
-                new FaceUpdatePayload("clearface", d.index, id, faces));
         src.sendMessage(Text.literal("§a[CustomBlocks] " + face + " face cleared on '" + id + "' (reverted to default)."));
         return 1;
     }
@@ -671,8 +659,6 @@ public class CustomBlockCommand {
         if (d == null) { src.sendError(notFound(id)); return 0; }
         SlotManager.clearAllFaces(id);
         SlotManager.saveAll();
-        CustomBlocksMod.broadcastFaceUpdate(src.getServer(),
-                new FaceUpdatePayload("clearallfaces", d.index, id, java.util.Collections.emptyMap()));
         src.sendMessage(Text.literal("§a[CustomBlocks] All face overrides cleared on '" + id + "'."));
         return 1;
     }

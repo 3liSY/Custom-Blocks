@@ -5,13 +5,6 @@ import net.minecraft.network.codec.PacketCodec;
 import net.minecraft.network.packet.CustomPayload;
 import net.minecraft.util.Identifier;
 
-/**
- * Server → Client for single-slot changes (no face data).
- * Actions: add | remove | rename | retexture | tabicon | setprop
- *
- * Face operations use FaceUpdatePayload on a separate channel so old
- * clients that don't know about faces silently ignore them.
- */
 public record SlotUpdatePayload(
         String action,
         int    slotIndex,
@@ -24,7 +17,7 @@ public record SlotUpdatePayload(
 ) implements CustomPayload {
 
     public static final Id<SlotUpdatePayload> ID =
-            new Id<>(Identifier.of("customblocks", "slot_update_v2"));
+            new Id<>(Identifier.of("customblocks", "slot_update"));
 
     public static final PacketCodec<PacketByteBuf, SlotUpdatePayload> CODEC = PacketCodec.of(
             (value, buf) -> {
@@ -46,8 +39,6 @@ public record SlotUpdatePayload(
                 int    lightLevel = buf.readVarInt();
                 float  hardness   = buf.readFloat();
                 String soundType  = buf.readString();
-                // Discard any extra bytes — makes decoder tolerant of version mismatches
-                if (buf.readableBytes() > 0) buf.skipBytes(buf.readableBytes());
                 return new SlotUpdatePayload(
                         action, index,
                         id.isEmpty()   ? null : id,

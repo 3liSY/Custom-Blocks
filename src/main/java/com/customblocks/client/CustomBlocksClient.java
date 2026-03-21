@@ -5,7 +5,6 @@ import com.customblocks.SlotManager;
 import com.customblocks.block.SlotBlock;
 import com.customblocks.client.gui.CustomBlocksScreen;
 import com.customblocks.client.texture.TextureCache;
-import com.customblocks.network.FaceUpdatePayload;
 import com.customblocks.network.FullSyncPayload;
 import com.customblocks.network.SlotUpdatePayload;
 import net.fabricmc.api.ClientModInitializer;
@@ -137,32 +136,6 @@ public class CustomBlocksClient implements ClientModInitializer {
                 if (needsReload) scheduleGenerateAndReload(client);
             });
         });
-
-        // ── FaceUpdatePayload ────────────────────────────────────────────────────
-        ClientPlayNetworking.registerGlobalReceiver(FaceUpdatePayload.ID, (payload, context) -> {
-            MinecraftClient client = context.client();
-            client.execute(() -> {
-                switch (payload.action()) {
-                    case "setface" -> {
-                        for (Map.Entry<String, byte[]> e : payload.faceTextures().entrySet()) {
-                            SlotManager.setFaceTexture(payload.customId(), e.getKey(), e.getValue());
-                        }
-                        TextureCache.invalidate(payload.customId());
-                    }
-                    case "clearface" -> {
-                        for (Map.Entry<String, byte[]> e : payload.faceTextures().entrySet()) {
-                            if (e.getValue() == null || e.getValue().length == 0)
-                                SlotManager.clearFaceTexture(payload.customId(), e.getKey());
-                        }
-                        TextureCache.invalidate(payload.customId());
-                    }
-                    case "clearallfaces" -> {
-                        SlotManager.clearAllFaces(payload.customId());
-                        TextureCache.invalidate(payload.customId());
-                    }
-                }
-                scheduleGenerateAndReload(client);
-            });
         });
 
         // ── HUD overlay: show block name only (no ID) ───────────────────────────
