@@ -18,22 +18,18 @@ import net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback;
 import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.screen.ingame.CreativeInventoryScreen;
 import net.minecraft.client.option.KeyBinding;
+import net.minecraft.client.render.RenderTickCounter;
 import net.minecraft.client.util.InputUtil;
 import net.minecraft.util.hit.BlockHitResult;
-import java.util.Map;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.concurrent.atomic.AtomicBoolean;
-import java.util.concurrent.atomic.AtomicLong;
 
 @Environment(EnvType.CLIENT)
 public class CustomBlocksClient implements ClientModInitializer {
 
     private static final String PACK_ENTRY = "file/customblocks_generated";
-    private static final AtomicBoolean reloadScheduled   = new AtomicBoolean(false);
-    private static final AtomicBoolean generateRunning   = new AtomicBoolean(false);
-    // Timestamp of last incoming packet — debounce fires 2s after THE LAST packet, not the first
-    private static final AtomicLong    lastPacketTime    = new AtomicLong(0);
+    private static final AtomicBoolean reloadScheduled = new AtomicBoolean(false);
 
     // Set to true after reload — creative tab will refresh on next tick if open
     public static volatile boolean pendingCreativeRefresh = false;
@@ -82,19 +78,15 @@ public class CustomBlocksClient implements ClientModInitializer {
         ClientPlayNetworking.registerGlobalReceiver(FullSyncPayload.ID, (payload, context) -> {
             MinecraftClient client = context.client();
             client.execute(() -> {
-                // Clear stale data from previous session
+                // Clear stale client-side slots and rebuild from server's authoritative data.
+                // This ensures slot indices always match the server exactly on every join/reconnect.
                 SlotManager.clearAll();
-                TextureCache.invalidateAll();  // prevent stale GPU textures after rejoin
                 for (FullSyncPayload.SlotEntry e : payload.entries()) {
                     SlotManager.assignAtIndex(e.index(), e.customId(), e.displayName(), null);
                     SlotManager.setProperties(e.customId(), e.lightLevel(), e.hardness(), e.soundType());
                 }
                 if (payload.tabIconTexture() != null)
                     SlotManager.setTabIconTexture(payload.tabIconTexture());
-                // Trigger a regeneration so the resource pack reflects current slot assignments.
-                // This is especially important when all blocks have no textures (new server).
-                // Texture packets arriving shortly after will debounce into the same reload cycle.
-                scheduleGenerateAndReload(client);
             });
         });
 
@@ -107,8 +99,7 @@ public class CustomBlocksClient implements ClientModInitializer {
                         if (SlotManager.getById(payload.customId()) != null)
                             SlotManager.updateTexture(payload.customId(), payload.texture());
                         else
-                            SlotManager.assignAtIndex(payload.slotIndex(), payload.customId(),
-                                    payload.displayName(), payload.texture());
+                            SlotManager.assignAtIndex(payload.slotIndex(), payload.customId(), payload.displayName(), payload.texture());
                         SlotManager.setProperties(payload.customId(),
                                 payload.lightLevel(), payload.hardness(), payload.soundType());
                         TextureCache.invalidate(payload.customId());
@@ -117,23 +108,19 @@ public class CustomBlocksClient implements ClientModInitializer {
                         TextureCache.invalidate(payload.customId());
                         SlotManager.remove(payload.customId());
                     }
-                    case "rename"  -> SlotManager.rename(payload.customId(), payload.displayName());
-                    case "setprop" -> SlotManager.setProperties(payload.customId(),
-                            payload.lightLevel(), payload.hardness(), payload.soundType());
+                    case "rename"    -> SlotManager.rename(payload.customId(), payload.displayName());
                     case "retexture" -> {
                         SlotManager.updateTexture(payload.customId(), payload.texture());
                         TextureCache.invalidate(payload.customId());
                     }
-                    case "tabicon" -> {
-                        SlotManager.setTabIconTexture(payload.texture());
-                        scheduleGenerateAndReload(client);
-                        return;
-                    }
+                    case "tabicon" -> SlotManager.setTabIconTexture(payload.texture());
+                    case "setprop" -> SlotManager.setProperties(payload.customId(),
+                            payload.lightLevel(), payload.hardness(), payload.soundType());
                 }
-                String action = payload.action();
-                boolean needsReload = action.equals("add") || action.equals("retexture")
-                        || action.equals("remove");
-                if (needsReload) scheduleGenerateAndReload(client);
+                SlotManager.saveToClientDir(client.runDirectory);
+                ResourcePackGenerator.generate(client);
+                injectPackIfNeeded(client);
+                scheduleReload(client);
             });
         });
 
@@ -192,44 +179,21 @@ public class CustomBlocksClient implements ClientModInitializer {
         }
     }
 
-    /**
-     * True debounce: stamps current time on every call.
-     * Background thread waits until 2s of silence, does I/O off-thread,
-     * then reloads. generateRunning is cleared BEFORE reload so new
-     * packets that arrive during reload start a fresh cycle.
-     */
-    private static void scheduleGenerateAndReload(MinecraftClient client) {
-        lastPacketTime.set(System.currentTimeMillis());
-        if (generateRunning.compareAndSet(false, true)) {
+    private static void scheduleReload(MinecraftClient client) {
+        if (reloadScheduled.compareAndSet(false, true)) {
             Thread t = new Thread(() -> {
-                // Wait until 2s of silence since last packet
-                while (true) {
-                    long remaining = 2000L - (System.currentTimeMillis() - lastPacketTime.get());
-                    if (remaining <= 0) break;
-                    try { Thread.sleep(Math.max(50, remaining)); } catch (InterruptedException ignored) { break; }
-                }
-                // Heavy I/O off main thread
-                SlotManager.saveToClientDir(client.runDirectory);
-                ResourcePackGenerator.generate(client);
-                // Back to main thread for reload
+                try { Thread.sleep(1000); } catch (InterruptedException ignored) {}
                 client.execute(() -> {
-                    injectPackIfNeeded(client);
-                    // Reset flag HERE so packets arriving during reload can start a new cycle
-                    generateRunning.set(false);
-                    if (reloadScheduled.compareAndSet(false, true)) {
-                        client.reloadResources().thenRun(() ->
-                            client.execute(() -> {
-                                reloadScheduled.set(false);
-                                CustomBlocksMod.LOGGER.info("[CustomBlocks] Resources reloaded.");
-                                pendingCreativeRefresh = true;
-                            })
-                        );
-                    } else {
-                        // Reload already in flight — files are written, it will pick them up
-                        pendingCreativeRefresh = true;
-                    }
+                    reloadScheduled.set(false);
+                    client.reloadResources().thenRun(() ->
+                        client.execute(() -> {
+                            CustomBlocksMod.LOGGER.info("[CustomBlocks] Resources reloaded.");
+                            // Signal tick handler to refresh creative tab
+                            pendingCreativeRefresh = true;
+                        })
+                    );
                 });
-            }, "CustomBlocks-GenerateReload");
+            }, "CustomBlocks-Reload");
             t.setDaemon(true);
             t.start();
         }

@@ -9,7 +9,7 @@ import net.minecraft.client.texture.NativeImageBackedTexture;
 import net.minecraft.util.Identifier;
 
 import java.io.ByteArrayInputStream;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.HashMap;
 import java.util.Map;
 
 @Environment(EnvType.CLIENT)
@@ -17,7 +17,7 @@ public class TextureCache {
 
     public record TexInfo(Identifier id, int width, int height) {}
 
-    private static final Map<String, TexInfo> CACHE = new ConcurrentHashMap<>();
+    private static final Map<String, TexInfo> CACHE = new HashMap<>();
 
     /** Load (or return cached) GPU texture for a block. Must be called on render thread. */
     public static TexInfo getOrLoad(String customId, byte[] textureBytes) {
