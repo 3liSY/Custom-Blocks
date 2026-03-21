@@ -136,7 +136,6 @@ public class CustomBlocksClient implements ClientModInitializer {
                 if (needsReload) scheduleGenerateAndReload(client);
             });
         });
-        });
 
         // ── HUD overlay: show block name only (no ID) ───────────────────────────
         HudRenderCallback.EVENT.register((ctx, tickCounter) -> {
