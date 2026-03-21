@@ -5,6 +5,7 @@ import com.customblocks.SlotManager;
 import com.customblocks.block.SlotBlock;
 import com.customblocks.client.gui.CustomBlocksScreen;
 import com.customblocks.client.texture.TextureCache;
+import com.customblocks.network.FaceUpdatePayload;
 import com.customblocks.network.FullSyncPayload;
 import com.customblocks.network.SlotUpdatePayload;
 import net.fabricmc.api.ClientModInitializer;
@@ -107,14 +108,10 @@ public class CustomBlocksClient implements ClientModInitializer {
                         if (SlotManager.getById(payload.customId()) != null)
                             SlotManager.updateTexture(payload.customId(), payload.texture());
                         else
-                            SlotManager.assignAtIndex(payload.slotIndex(), payload.customId(), payload.displayName(), payload.texture());
+                            SlotManager.assignAtIndex(payload.slotIndex(), payload.customId(),
+                                    payload.displayName(), payload.texture());
                         SlotManager.setProperties(payload.customId(),
                                 payload.lightLevel(), payload.hardness(), payload.soundType());
-                        // Apply any face overrides carried in this packet
-                        for (Map.Entry<String, byte[]> e : payload.faceTextures().entrySet()) {
-                            if (e.getValue() != null && e.getValue().length > 0)
-                                SlotManager.setFaceTexture(payload.customId(), e.getKey(), e.getValue());
-                        }
                         TextureCache.invalidate(payload.customId());
                     }
                     case "remove" -> {
@@ -130,10 +127,22 @@ public class CustomBlocksClient implements ClientModInitializer {
                     }
                     case "tabicon" -> {
                         SlotManager.setTabIconTexture(payload.texture());
-                        // Tab icon texture lives in the resource pack — needs regeneration
                         scheduleGenerateAndReload(client);
                         return;
                     }
+                }
+                String action = payload.action();
+                boolean needsReload = action.equals("add") || action.equals("retexture")
+                        || action.equals("remove");
+                if (needsReload) scheduleGenerateAndReload(client);
+            });
+        });
+
+        // ── FaceUpdatePayload ────────────────────────────────────────────────────
+        ClientPlayNetworking.registerGlobalReceiver(FaceUpdatePayload.ID, (payload, context) -> {
+            MinecraftClient client = context.client();
+            client.execute(() -> {
+                switch (payload.action()) {
                     case "setface" -> {
                         for (Map.Entry<String, byte[]> e : payload.faceTextures().entrySet()) {
                             SlotManager.setFaceTexture(payload.customId(), e.getKey(), e.getValue());
@@ -142,9 +151,8 @@ public class CustomBlocksClient implements ClientModInitializer {
                     }
                     case "clearface" -> {
                         for (Map.Entry<String, byte[]> e : payload.faceTextures().entrySet()) {
-                            if (e.getValue() == null || e.getValue().length == 0) {
+                            if (e.getValue() == null || e.getValue().length == 0)
                                 SlotManager.clearFaceTexture(payload.customId(), e.getKey());
-                            }
                         }
                         TextureCache.invalidate(payload.customId());
                     }
@@ -153,13 +161,7 @@ public class CustomBlocksClient implements ClientModInitializer {
                         TextureCache.invalidate(payload.customId());
                     }
                 }
-                // Only trigger resource pack regeneration + reload for actions that change textures.
-                // rename and setprop don't affect any files in the resource pack.
-                String action = payload.action();
-                boolean needsReload = action.equals("add") || action.equals("retexture")
-                        || action.equals("remove") || action.startsWith("setface")
-                        || action.startsWith("clearface") || action.equals("clearallfaces");
-                if (needsReload) scheduleGenerateAndReload(client);
+                scheduleGenerateAndReload(client);
             });
         });
 

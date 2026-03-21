@@ -3,6 +3,7 @@ package com.customblocks;
 import com.customblocks.block.SlotBlock;
 import com.customblocks.item.ColorSquareItem;
 import com.customblocks.command.CustomBlockCommand;
+import com.customblocks.network.FaceUpdatePayload;
 import com.customblocks.network.FullSyncPayload;
 import com.customblocks.network.SlotUpdatePayload;
 import net.fabricmc.api.ModInitializer;
@@ -87,6 +88,7 @@ public class CustomBlocksMod implements ModInitializer {
         // Network
         PayloadTypeRegistry.playS2C().register(FullSyncPayload.ID, FullSyncPayload.CODEC);
         PayloadTypeRegistry.playS2C().register(SlotUpdatePayload.ID, SlotUpdatePayload.CODEC);
+        PayloadTypeRegistry.playS2C().register(FaceUpdatePayload.ID, FaceUpdatePayload.CODEC);
 
         // Creative tab
         Registry.register(Registries.ITEM_GROUP, CUSTOM_BLOCKS_TAB,
@@ -139,11 +141,19 @@ public class CustomBlocksMod implements ModInitializer {
                     .filter(d -> d.texture != null && d.texture.length > 0)
                     .sorted(Comparator.comparingInt(d -> d.index))
                     .forEach(d -> queue.add(new SlotUpdatePayload("add", d.index, d.customId, d.displayName,
-                            d.texture, d.lightLevel, d.hardness, d.soundType,
-                            new java.util.HashMap<>(d.faceTextures))));
+                            d.texture, d.lightLevel, d.hardness, d.soundType)));
             UUID uuid = handler.player.getUuid();
             PENDING_TEXTURES.put(uuid, queue);
             SEND_DELAY.put(uuid, DELAY_TICKS);
+
+            // Send face overrides immediately (separate channel, small packets)
+            for (SlotManager.SlotData d : SlotManager.allSlots()) {
+                if (d.hasFaces()) {
+                    ServerPlayNetworking.send(handler.player,
+                        new FaceUpdatePayload("setface", d.index, d.customId,
+                            new java.util.HashMap<>(d.faceTextures)));
+                }
+            }
         });
 
         // On disconnect: clean up
@@ -184,18 +194,18 @@ public class CustomBlocksMod implements ModInitializer {
         LOGGER.info("[CustomBlocks] Initialized. {} slot(s) loaded.", SlotManager.usedSlots());
     }
 
-    public static void broadcastUpdate(MinecraftServer server, SlotUpdatePayload payload) {
-        // Face operations (setface/clearface/clearallfaces) must ALWAYS be sent directly —
-        // never replace an "add" packet in the queue (which carries the full default texture).
-        // Replacing "add" with "setface" would make the client lose the main texture entirely.
-        boolean isFaceOp = payload.action().startsWith("setface")
-                        || payload.action().startsWith("clearface")
-                        || payload.action().equals("clearallfaces");
+    public static void broadcastFaceUpdate(MinecraftServer server, FaceUpdatePayload payload) {
+        // Face operations use a separate channel — old clients simply ignore unknown channels
+        for (var player : server.getPlayerManager().getPlayerList()) {
+            ServerPlayNetworking.send(player, payload);
+        }
+    }
 
+    public static void broadcastUpdate(MinecraftServer server, SlotUpdatePayload payload) {
         for (var player : server.getPlayerManager().getPlayerList()) {
             UUID uuid = player.getUuid();
             ConcurrentLinkedQueue<SlotUpdatePayload> oldQueue = PENDING_TEXTURES.get(uuid);
-            if (!isFaceOp && oldQueue != null && !oldQueue.isEmpty()) {
+            if (oldQueue != null && !oldQueue.isEmpty()) {
                 // Player is mid-sync — build a new queue replacing matching "add"/"retexture" entry
                 ConcurrentLinkedQueue<SlotUpdatePayload> newQueue = new ConcurrentLinkedQueue<>();
                 boolean replaced = false;
@@ -212,7 +222,6 @@ public class CustomBlocksMod implements ModInitializer {
                     ServerPlayNetworking.send(player, payload);
                 }
             } else {
-                // Face ops and non-mid-sync players always get sent directly
                 ServerPlayNetworking.send(player, payload);
             }
         }

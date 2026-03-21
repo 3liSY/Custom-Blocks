@@ -3,6 +3,7 @@ package com.customblocks.command;
 import com.customblocks.CustomBlocksMod;
 import com.customblocks.SlotManager;
 import com.customblocks.block.SlotBlock;
+import com.customblocks.network.FaceUpdatePayload;
 import com.customblocks.network.SlotUpdatePayload;
 import com.mojang.brigadier.arguments.FloatArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
@@ -672,9 +673,8 @@ public class CustomBlockCommand {
         if (d == null) { src.sendError(notFound(id)); return 0; }
         SlotManager.clearAllFaces(id);
         SlotManager.saveAll();
-        CustomBlocksMod.broadcastUpdate(src.getServer(), new com.customblocks.network.SlotUpdatePayload(
-                "clearallfaces", d.index, id, null, null,
-                d.lightLevel, d.hardness, d.soundType));
+        CustomBlocksMod.broadcastFaceUpdate(src.getServer(),
+                new FaceUpdatePayload("clearallfaces", d.index, id, java.util.Collections.emptyMap()));
         src.sendMessage(Text.literal("§a[CustomBlocks] All face overrides cleared on '" + id + "'."));
         return 1;
     }
