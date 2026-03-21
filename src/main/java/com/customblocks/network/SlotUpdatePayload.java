@@ -60,13 +60,19 @@ public record SlotUpdatePayload(
                 int    lightLevel  = buf.readVarInt();
                 float  hardness    = buf.readFloat();
                 String soundType   = buf.readString();
-                int    faceCount   = buf.readVarInt();
-                Map<String, byte[]> faces = new HashMap<>(faceCount);
-                for (int i = 0; i < faceCount; i++) {
-                    String faceKey  = buf.readString();
-                    byte[] faceData = buf.readByteArray(10_485_760);
-                    faces.put(faceKey, faceData);
-                }
+                // Read face textures defensively — older clients that don't have this
+                // field will simply get an empty map instead of crashing
+                Map<String, byte[]> faces = new HashMap<>();
+                try {
+                    if (buf.readableBytes() > 0) {
+                        int faceCount = buf.readVarInt();
+                        for (int i = 0; i < faceCount; i++) {
+                            String faceKey  = buf.readString();
+                            byte[] faceData = buf.readByteArray(10_485_760);
+                            faces.put(faceKey, faceData);
+                        }
+                    }
+                } catch (Exception ignored) { /* old codec — no face data */ }
                 return new SlotUpdatePayload(
                         action, index,
                         id.isEmpty()   ? null : id,
