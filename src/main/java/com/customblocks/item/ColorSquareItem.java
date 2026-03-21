@@ -56,11 +56,16 @@ public class ColorSquareItem extends Item {
             return ActionResult.PASS;
         }
 
+        // Require OP level 2 — same permission as all other CustomBlocks commands
+        if (player != null && !player.hasPermissionLevel(2)) {
+            player.sendMessage(Text.literal("§c[CustomBlocks] You need OP (level 2) to use color squares."), true);
+            return ActionResult.FAIL;
+        }
+
         SlotManager.SlotData current = SlotManager.getBySlot(sb.getSlotKey());
         if (current == null) {
-            if (player != null)
-                player.sendMessage(Text.literal("§c[CustomBlocks] Block has no slot data."), true);
-            return ActionResult.FAIL;
+            // Slot block exists in world but has no data — PASS so other interactions still work
+            return ActionResult.PASS;
         }
 
         // Strip any existing color prefix → get base name (e.g. "black_alef" → "alef")

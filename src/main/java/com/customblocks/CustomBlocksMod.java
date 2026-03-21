@@ -51,7 +51,7 @@ public class CustomBlocksMod implements ModInitializer {
     @Override
     public void onInitialize() {
 
-        // Register 256 slot blocks — ALWAYS the same 256, no runtime changes = no registry mismatch
+        // Register 512 slot blocks — ALWAYS the same 512, no runtime changes = no registry mismatch
         for (int i = 0; i < SlotManager.MAX_SLOTS; i++) {
             final int idx = i;
 
@@ -64,8 +64,9 @@ public class CustomBlocksMod implements ModInitializer {
                     });
 
             SlotBlock       block = new SlotBlock(i, settings);
-            SlotBlock.SlotItem item  = new SlotBlock.SlotItem(block, new Item.Settings());
             Identifier      id    = Identifier.of(MOD_ID, "slot_" + i);
+            SlotBlock.SlotItem item  = new SlotBlock.SlotItem(block,
+                    new Item.Settings().registryKey(RegistryKey.of(RegistryKeys.ITEM, id)));
 
             Registry.register(Registries.BLOCK, id, block);
             Registry.register(Registries.ITEM, id, item);
@@ -79,9 +80,7 @@ public class CustomBlocksMod implements ModInitializer {
         for (String[] sq : squares) {
             Identifier sqId = Identifier.of(MOD_ID, sq[0] + "square");
             ColorSquareItem sqItem = new ColorSquareItem(sq[0], sq[1],
-                    new Item.Settings()
-                        .registryKey(RegistryKey.of(RegistryKeys.ITEM, sqId))
-                        .maxCount(1));
+                    new Item.Settings().maxCount(1));
             Registry.register(Registries.ITEM, sqId, sqItem);
         }
 
@@ -154,7 +153,7 @@ public class CustomBlocksMod implements ModInitializer {
             SEND_DELAY.remove(uuid);
         });
 
-        // Each tick: drip-feed queued textures (15 per tick, after 2s delay)
+        // Each tick: drip-feed queued textures (4 per tick, after 3s delay)
         ServerTickEvents.END_SERVER_TICK.register(server -> {
             for (ServerPlayerEntity player : server.getPlayerManager().getPlayerList()) {
                 UUID uuid = player.getUuid();

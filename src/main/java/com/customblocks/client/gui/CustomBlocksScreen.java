@@ -593,10 +593,12 @@ public class CustomBlocksScreen extends Screen {
         if (id.isEmpty())   { status("Enter an ID!",C_RED); return; }
         if (name.isEmpty()) { status("Enter a name!",C_RED); return; }
         if (url.isEmpty())  { status("Paste a URL!",C_RED); return; }
+        if (name.contains("_")) { status("Name cannot contain underscores — use spaces.",C_RED); return; }
         if (SlotManager.hasId(id)) { status("'"+id+"' already exists!",C_RED); return; }
         if (SlotManager.freeSlots()==0) { status("All "+SlotManager.MAX_SLOTS+" slots full!",C_RED); return; }
         closePanel();
         status("Downloading...",C_YELLOW);
+        // name uses _ as word separator in the command (server replaces _ back to spaces)
         send("customblock createurl "+id+" "+name.replace(" ","_")+" "+url);
     }
 
@@ -604,6 +606,7 @@ public class CustomBlocksScreen extends Screen {
         if (selectedId==null) return;
         String name=fldRenameNew.getText().trim();
         if (name.isEmpty()) { status("Enter a name!",C_RED); return; }
+        if (name.contains("_")) { status("Name cannot contain underscores — use spaces.",C_RED); return; }
         closePanel();
         send("customblock rename "+selectedId+" "+name.replace(" ","_"));
         status("Renamed!",C_GREEN);
@@ -714,9 +717,11 @@ public class CustomBlocksScreen extends Screen {
     private void rebuildFiltered() {
         filtered.clear();
         String q=search.toLowerCase();
-        for (SlotManager.SlotData d : SlotManager.allSlots())
+        for (SlotManager.SlotData d : SlotManager.allSlots()) {
+            if (d.customId.equals("tab_icon")) continue; // never show tab_icon in grid
             if (q.isEmpty()||d.customId.contains(q)||d.displayName.toLowerCase().contains(q))
                 filtered.add(d);
+        }
         Comparator<SlotManager.SlotData> cmp = switch(sortMode) {
             case 1 -> Comparator.comparingInt(d -> d.index);
             case 2 -> Comparator.comparingInt((SlotManager.SlotData d)->d.lightLevel).reversed();
@@ -748,6 +753,10 @@ public class CustomBlocksScreen extends Screen {
     }
 
     private void send(String cmd) {
+        if (client.player == null || client.player.networkHandler == null) {
+            status("Not connected to server!", C_RED);
+            return;
+        }
         client.player.networkHandler.sendChatCommand(cmd);
     }
 

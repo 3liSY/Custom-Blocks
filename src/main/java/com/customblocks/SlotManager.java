@@ -249,11 +249,12 @@ public class SlotManager {
         // Track which slot+face files are still valid
         java.util.Set<String> validFiles = new java.util.HashSet<>();
         for (SlotData d : SLOTS.values()) {
-            if (d.texture != null) {
-                try { Files.write(new File(dir, d.slotKey() + ".png").toPath(), d.texture); }
-                catch (IOException ex) { LOGGER.error("Failed to save texture for {}", d.customId, ex); }
+            if (d.texture != null && d.texture.length > 0) {
+                try {
+                    Files.write(new File(dir, d.slotKey() + ".png").toPath(), d.texture);
+                    validFiles.add(d.slotKey() + ".png"); // only protect if actually written
+                } catch (IOException ex) { LOGGER.error("Failed to save texture for {}", d.customId, ex); }
             }
-            validFiles.add(d.slotKey() + ".png");
             // Save face textures and mark as valid
             for (Map.Entry<String, byte[]> face : d.faceTextures.entrySet()) {
                 String faceFile = d.slotKey() + "_" + face.getKey() + ".png";
@@ -396,6 +397,20 @@ public class SlotManager {
         if (tabIconTexture != null) {
             try { Files.write(new File(dir, "tab_icon.png").toPath(), tabIconTexture); }
             catch (IOException ignored) {}
+        }
+        // Clean up orphaned face PNGs on client side too
+        java.util.Set<String> clientValid = new java.util.HashSet<>();
+        for (SlotData d : SLOTS.values()) {
+            if (d.texture != null && d.texture.length > 0) clientValid.add(d.slotKey() + ".png");
+            for (String face : d.faceTextures.keySet()) clientValid.add(d.slotKey() + "_" + face + ".png");
+        }
+        File[] clientPngs = dir.listFiles((d2, n) -> n.matches("slot_\d+(_[a-z]+)?\.png"));
+        if (clientPngs != null) {
+            for (File f : clientPngs) {
+                if (!clientValid.contains(f.getName())) {
+                    try { Files.deleteIfExists(f.toPath()); } catch (IOException ignored) {}
+                }
+            }
         }
     }
 }

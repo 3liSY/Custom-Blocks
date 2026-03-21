@@ -91,6 +91,10 @@ public class CustomBlocksClient implements ClientModInitializer {
                 }
                 if (payload.tabIconTexture() != null)
                     SlotManager.setTabIconTexture(payload.tabIconTexture());
+                // Trigger a regeneration so the resource pack reflects current slot assignments.
+                // This is especially important when all blocks have no textures (new server).
+                // Texture packets arriving shortly after will debounce into the same reload cycle.
+                scheduleGenerateAndReload(client);
             });
         });
 
@@ -117,24 +121,26 @@ public class CustomBlocksClient implements ClientModInitializer {
                         TextureCache.invalidate(payload.customId());
                         SlotManager.remove(payload.customId());
                     }
-                    case "rename"    -> SlotManager.rename(payload.customId(), payload.displayName());
+                    case "rename"  -> SlotManager.rename(payload.customId(), payload.displayName());
+                    case "setprop" -> SlotManager.setProperties(payload.customId(),
+                            payload.lightLevel(), payload.hardness(), payload.soundType());
                     case "retexture" -> {
                         SlotManager.updateTexture(payload.customId(), payload.texture());
                         TextureCache.invalidate(payload.customId());
                     }
-                    case "tabicon" -> SlotManager.setTabIconTexture(payload.texture());
-                    case "setprop" -> SlotManager.setProperties(payload.customId(),
-                            payload.lightLevel(), payload.hardness(), payload.soundType());
+                    case "tabicon" -> {
+                        SlotManager.setTabIconTexture(payload.texture());
+                        // Tab icon texture lives in the resource pack — needs regeneration
+                        scheduleGenerateAndReload(client);
+                        return;
+                    }
                     case "setface" -> {
-                        // map has exactly one entry: face → bytes
                         for (Map.Entry<String, byte[]> e : payload.faceTextures().entrySet()) {
                             SlotManager.setFaceTexture(payload.customId(), e.getKey(), e.getValue());
                         }
                         TextureCache.invalidate(payload.customId());
                     }
                     case "clearface" -> {
-                        // map keys = faces to remove. Value is empty byte[] sentinel (from server).
-                        // Only remove faces whose value is empty — guards against corrupted packets.
                         for (Map.Entry<String, byte[]> e : payload.faceTextures().entrySet()) {
                             if (e.getValue() == null || e.getValue().length == 0) {
                                 SlotManager.clearFaceTexture(payload.customId(), e.getKey());
@@ -147,8 +153,13 @@ public class CustomBlocksClient implements ClientModInitializer {
                         TextureCache.invalidate(payload.customId());
                     }
                 }
-                // Debounce save+generate+reload — only runs once after all batch packets settle
-                scheduleGenerateAndReload(client);
+                // Only trigger resource pack regeneration + reload for actions that change textures.
+                // rename and setprop don't affect any files in the resource pack.
+                String action = payload.action();
+                boolean needsReload = action.equals("add") || action.equals("retexture")
+                        || action.equals("remove") || action.startsWith("setface")
+                        || action.startsWith("clearface") || action.equals("clearallfaces");
+                if (needsReload) scheduleGenerateAndReload(client);
             });
         });
 

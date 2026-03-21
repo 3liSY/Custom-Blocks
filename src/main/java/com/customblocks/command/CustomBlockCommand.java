@@ -504,7 +504,7 @@ public class CustomBlockCommand {
             java.util.List<String>   failed     = new java.util.ArrayList<>();
 
             for (File png : allPngs) {
-                String rawName     = png.getName().replaceAll("(?i)\\.png$", "");
+                String rawName     = png.getName().replaceAll("(?i)\\.(png|jpg|jpeg)$", "");
                 String id          = rawName.toLowerCase().replaceAll("[^a-z0-9_]", "_");
                 String displayName = java.util.Arrays.stream(rawName.replace("_", " ").split(" "))
                     .map(w -> w.isEmpty() ? w : Character.toUpperCase(w.charAt(0)) + w.substring(1).toLowerCase())
@@ -627,15 +627,18 @@ public class CustomBlockCommand {
             try {
                 byte[] bytes = download(url);
                 server.execute(() -> {
+                    SlotManager.SlotData d = SlotManager.getById(id);
+                    if (d == null) { src.sendError(Text.literal("§c[CustomBlocks] '" + id + "' was deleted before texture arrived.")); return; }
                     SlotManager.setFaceTexture(id, face, bytes);
                     SlotManager.saveAll();
-                    // Broadcast as setface — map carries exactly one entry
+                    // Re-fetch after mutation so we have the updated object
+                    SlotManager.SlotData updated = SlotManager.getById(id);
+                    if (updated == null) return; // extremely unlikely but guard anyway
                     Map<String, byte[]> faces = new java.util.HashMap<>();
                     faces.put(face, bytes);
-                    SlotManager.SlotData d = SlotManager.getById(id);
                     CustomBlocksMod.broadcastUpdate(server, new com.customblocks.network.SlotUpdatePayload(
-                            "setface", d.index, id, null, null,
-                            d.lightLevel, d.hardness, d.soundType, faces));
+                            "setface", updated.index, id, null, null,
+                            updated.lightLevel, updated.hardness, updated.soundType, faces));
                     src.sendMessage(Text.literal("§a[CustomBlocks] " + face + " face set on '" + id + "'."));
                 });
             } catch (Exception e) {
@@ -650,9 +653,10 @@ public class CustomBlockCommand {
         if (!SlotManager.FACE_KEYS.contains(face)) {
             src.sendError(Text.literal("§cValid faces: top bottom north south east west")); return 0;
         }
+        SlotManager.SlotData d = SlotManager.getById(id); // fetch BEFORE mutation
+        if (d == null) { src.sendError(notFound(id)); return 0; }
         SlotManager.clearFaceTexture(id, face);
         SlotManager.saveAll();
-        SlotManager.SlotData d = SlotManager.getById(id);
         Map<String, byte[]> faces = new java.util.HashMap<>();
         faces.put(face, new byte[0]); // empty = sentinel for clearface
         CustomBlocksMod.broadcastUpdate(src.getServer(), new com.customblocks.network.SlotUpdatePayload(
@@ -664,9 +668,10 @@ public class CustomBlockCommand {
 
     private static int cmdClearAllFaces(ServerCommandSource src, String id) {
         if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
+        SlotManager.SlotData d = SlotManager.getById(id); // fetch BEFORE mutation
+        if (d == null) { src.sendError(notFound(id)); return 0; }
         SlotManager.clearAllFaces(id);
         SlotManager.saveAll();
-        SlotManager.SlotData d = SlotManager.getById(id);
         CustomBlocksMod.broadcastUpdate(src.getServer(), new com.customblocks.network.SlotUpdatePayload(
                 "clearallfaces", d.index, id, null, null,
                 d.lightLevel, d.hardness, d.soundType));

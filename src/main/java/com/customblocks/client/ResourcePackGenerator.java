@@ -58,12 +58,14 @@ public class ResourcePackGenerator {
                 String modelRef = MOD_ID + ":block/" + slotKey;
                 SlotManager.SlotData data = SlotManager.getBySlot(slotKey);
 
-                // ── Default (all-faces) texture ───────────────────────────────
+                // ── Default (all-faces) texture — skip write if file already same size ──
                 File texDest = new File(assets, "textures/block/" + slotKey + ".png");
                 if (data != null && data.texture != null && data.texture.length > 0) {
-                    writePng(data.texture, texDest);
+                    if (!texDest.exists() || texDest.length() != data.texture.length)
+                        writePng(data.texture, texDest);
                 } else {
-                    Files.write(texDest.toPath(), PLACEHOLDER_PNG);
+                    if (!texDest.exists())
+                        Files.write(texDest.toPath(), PLACEHOLDER_PNG);
                 }
 
                 // ── Per-face textures ─────────────────────────────────────────
@@ -71,7 +73,8 @@ public class ResourcePackGenerator {
                     for (Map.Entry<String, byte[]> face : data.faceTextures.entrySet()) {
                         File faceDest = new File(assets,
                                 "textures/block/" + slotKey + "_" + face.getKey() + ".png");
-                        writePng(face.getValue(), faceDest);
+                        if (!faceDest.exists() || faceDest.length() != face.getValue().length)
+                            writePng(face.getValue(), faceDest);
                     }
                 }
 
