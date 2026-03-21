@@ -637,9 +637,8 @@ public class CustomBlockCommand {
                     if (updated == null) return; // extremely unlikely but guard anyway
                     Map<String, byte[]> faces = new java.util.HashMap<>();
                     faces.put(face, bytes);
-                    CustomBlocksMod.broadcastUpdate(server, new com.customblocks.network.SlotUpdatePayload(
-                            "setface", updated.index, id, null, null,
-                            updated.lightLevel, updated.hardness, updated.soundType, faces));
+                    CustomBlocksMod.broadcastFaceUpdate(server,
+                            new FaceUpdatePayload("setface", updated.index, id, faces));
                     src.sendMessage(Text.literal("§a[CustomBlocks] " + face + " face set on '" + id + "'."));
                 });
             } catch (Exception e) {
@@ -660,9 +659,8 @@ public class CustomBlockCommand {
         SlotManager.saveAll();
         Map<String, byte[]> faces = new java.util.HashMap<>();
         faces.put(face, new byte[0]); // empty = sentinel for clearface
-        CustomBlocksMod.broadcastUpdate(src.getServer(), new com.customblocks.network.SlotUpdatePayload(
-                "clearface", d.index, id, null, null,
-                d.lightLevel, d.hardness, d.soundType, faces));
+        CustomBlocksMod.broadcastFaceUpdate(src.getServer(),
+                new FaceUpdatePayload("clearface", d.index, id, faces));
         src.sendMessage(Text.literal("§a[CustomBlocks] " + face + " face cleared on '" + id + "' (reverted to default)."));
         return 1;
     }
