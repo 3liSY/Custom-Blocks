@@ -53,6 +53,7 @@ public record FullSyncPayload(List<SlotEntry> entries, byte[] tabIconTexture) im
                             tex.length > 0 ? tex : null, lightLevel, hardness, soundType));
                 }
                 byte[] tabIcon = buf.readByteArray(10_485_760);
+                if (buf.readableBytes() > 0) buf.skipBytes(buf.readableBytes());
                 return new FullSyncPayload(entries, tabIcon.length > 0 ? tabIcon : null);
             }
     );

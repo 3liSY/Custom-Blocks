@@ -23,6 +23,7 @@ import java.net.URI;
 import java.net.http.*;
 import java.time.Duration;
 import java.util.Collection;
+import java.util.Map;
 
 public class CustomBlockCommand {
 
@@ -39,9 +40,17 @@ public class CustomBlockCommand {
                 return builder.buildFuture();
             };
 
+
+
+    private static final SuggestionProvider<ServerCommandSource> FACE_SUGGESTIONS =
+            (ctx, builder) -> {
+                for (String f : SlotManager.FACE_KEYS) builder.suggest(f);
+                return builder.buildFuture();
+            };
     public static void register() {
         CommandRegistrationCallback.EVENT.register((dispatcher, reg, env) -> {
-            dispatcher.register(CommandManager.literal("customblock")
+            // Build the command tree once, register under both /customblock and /cb
+            var tree = CommandManager.literal("customblock")
                 .requires(src -> src.hasPermissionLevel(2))
 
                 // ── createurl <id> <name> <url> ──────────────────────────────
@@ -168,6 +177,76 @@ public class CustomBlockCommand {
                     )
                 )
 
+
+                // ── per-face texture commands ─────────────────────────────────────────
+                .then(CommandManager.literal("settopface")
+                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
+                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
+                            .executes(ctx -> cmdSetFace(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "id"), "top",
+                                StringArgumentType.getString(ctx, "url").trim())))))
+
+                .then(CommandManager.literal("setbottomface")
+                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
+                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
+                            .executes(ctx -> cmdSetFace(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "id"), "bottom",
+                                StringArgumentType.getString(ctx, "url").trim())))))
+
+                .then(CommandManager.literal("setnorthface")
+                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
+                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
+                            .executes(ctx -> cmdSetFace(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "id"), "north",
+                                StringArgumentType.getString(ctx, "url").trim())))))
+
+                .then(CommandManager.literal("setsouthface")
+                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
+                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
+                            .executes(ctx -> cmdSetFace(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "id"), "south",
+                                StringArgumentType.getString(ctx, "url").trim())))))
+
+                .then(CommandManager.literal("seteastface")
+                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
+                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
+                            .executes(ctx -> cmdSetFace(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "id"), "east",
+                                StringArgumentType.getString(ctx, "url").trim())))))
+
+                .then(CommandManager.literal("setwestface")
+                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
+                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
+                            .executes(ctx -> cmdSetFace(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "id"), "west",
+                                StringArgumentType.getString(ctx, "url").trim())))))
+
+                .then(CommandManager.literal("clearface")
+                    .executes(ctx -> usage(ctx.getSource(), "clearface"))
+                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
+                        .then(CommandManager.argument("face", StringArgumentType.word())
+                            .suggests(FACE_SUGGESTIONS)
+                            .executes(ctx -> cmdClearFace(ctx.getSource(),
+                                StringArgumentType.getString(ctx, "id"),
+                                StringArgumentType.getString(ctx, "face"))))))
+
+                // ── givesquare <black|yellow|green> ──────────────────────────────────────
+                .then(CommandManager.literal("givesquare")
+                    .executes(ctx -> usage(ctx.getSource(), "givesquare"))
+                    .then(CommandManager.argument("color", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("black"); builder.suggest("yellow"); builder.suggest("green");
+                            return builder.buildFuture();
+                        })
+                        .executes(ctx -> cmdGiveSquare(ctx.getSource(),
+                            StringArgumentType.getString(ctx, "color")))))
+
+                .then(CommandManager.literal("clearallfaces")
+                    .executes(ctx -> usage(ctx.getSource(), "clearallfaces"))
+                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
+                        .executes(ctx -> cmdClearAllFaces(ctx.getSource(),
+                            StringArgumentType.getString(ctx, "id")))))
+
                 // ── export ───────────────────────────────────────────────────
                 .then(CommandManager.literal("export")
                     .executes(ctx -> cmdExport(ctx.getSource()))
@@ -189,7 +268,26 @@ public class CustomBlockCommand {
                 .then(CommandManager.literal("help")
                     .executes(ctx -> cmdHelp(ctx.getSource()))
                 )
-            );
+
+                // ── colorchanger — give all 3 squares at once or one color ──────────────
+                .then(CommandManager.literal("colorchanger")
+                    .executes(ctx -> cmdColorChangerAll(ctx.getSource()))
+                    .then(CommandManager.argument("color", StringArgumentType.word())
+                        .suggests((ctx, builder) -> {
+                            builder.suggest("black"); builder.suggest("yellow"); builder.suggest("green");
+                            return builder.buildFuture();
+                        })
+                        .executes(ctx -> cmdGiveSquare(ctx.getSource(),
+                            StringArgumentType.getString(ctx, "color")))))
+            ;
+
+            // Register under /customblock
+            dispatcher.register(tree);
+
+            // Register under /cb as a full alias (same tree, different name)
+            dispatcher.register(CommandManager.literal("cb")
+                .requires(src -> src.hasPermissionLevel(2))
+                .redirect(dispatcher.getRoot().getChild("customblock")));
         });
     }
 
@@ -406,7 +504,7 @@ public class CustomBlockCommand {
             java.util.List<String>   failed     = new java.util.ArrayList<>();
 
             for (File png : allPngs) {
-                String rawName     = png.getName().replaceAll("(?i)\\.png$", "");
+                String rawName     = png.getName().replaceAll("(?i)\\.(png|jpg|jpeg)$", "");
                 String id          = rawName.toLowerCase().replaceAll("[^a-z0-9_]", "_");
                 String displayName = java.util.Arrays.stream(rawName.replace("_", " ").split(" "))
                     .map(w -> w.isEmpty() ? w : Character.toUpperCase(w.charAt(0)) + w.substring(1).toLowerCase())
@@ -507,10 +605,110 @@ public class CustomBlockCommand {
         src.sendMessage(Text.literal("§f/customblock sethardness <id> <val>  §7mining speed (−1=unbreakable)"));
         src.sendMessage(Text.literal("§f/customblock setsound <id> <stone|wood|metal|glass|grass|sand>"));
         src.sendMessage(Text.literal("§f/customblock settabicon <url>  §7set tab icon"));
+        src.sendMessage(Text.literal("§f/customblock set[top|bottom|north|south|east|west]face <id> <url>  §7set a face"));
+        src.sendMessage(Text.literal("§f/customblock givesquare <black|yellow|green>  §7get a color-swap square item"));
+        src.sendMessage(Text.literal("§f/customblock colorchanger [color]  §7give all 3 squares (or one color)"));
+        src.sendMessage(Text.literal("§7Tip: use §f/cb§7 as a short alias for §f/customblock§7!"));
+        src.sendMessage(Text.literal("§f/customblock clearface <id> <face>  §7revert one face to default"));
+        src.sendMessage(Text.literal("§f/customblock clearallfaces <id>  §7revert all faces to default"));
         src.sendMessage(Text.literal("§f/customblock importfolder  §7bulk-import PNGs from config/customblocks/import/"));
         src.sendMessage(Text.literal("§f/customblock export  §7export block list to config/customblocks/export.json"));
         src.sendMessage(Text.literal("§f/customblock list  §7list all blocks"));
         src.sendMessage(Text.literal("§7No restarts needed for any command!"));
+        return 1;
+    }
+
+
+    private static int cmdSetFace(ServerCommandSource src, String id, String face, String url) {
+        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
+        src.sendMessage(Text.literal("§e[CustomBlocks] Downloading " + face + " face texture..."));
+        MinecraftServer server = src.getServer();
+        thread(() -> {
+            try {
+                byte[] bytes = download(url);
+                server.execute(() -> {
+                    SlotManager.SlotData d = SlotManager.getById(id);
+                    if (d == null) { src.sendError(Text.literal("§c[CustomBlocks] '" + id + "' was deleted before texture arrived.")); return; }
+                    SlotManager.setFaceTexture(id, face, bytes);
+                    SlotManager.saveAll();
+                    src.sendMessage(Text.literal("§a[CustomBlocks] " + face + " face set on '" + id + "'."));
+                });
+            } catch (Exception e) {
+                server.execute(() -> src.sendError(Text.literal("§c[CustomBlocks] Download failed: " + e.getMessage())));
+            }
+        });
+        return 1;
+    }
+
+    private static int cmdClearFace(ServerCommandSource src, String id, String face) {
+        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
+        if (!SlotManager.FACE_KEYS.contains(face)) {
+            src.sendError(Text.literal("§cValid faces: top bottom north south east west")); return 0;
+        }
+        SlotManager.SlotData d = SlotManager.getById(id); // fetch BEFORE mutation
+        if (d == null) { src.sendError(notFound(id)); return 0; }
+        SlotManager.clearFaceTexture(id, face);
+        SlotManager.saveAll();
+        src.sendMessage(Text.literal("§a[CustomBlocks] " + face + " face cleared on '" + id + "' (reverted to default)."));
+        return 1;
+    }
+
+    private static int cmdClearAllFaces(ServerCommandSource src, String id) {
+        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
+        SlotManager.SlotData d = SlotManager.getById(id); // fetch BEFORE mutation
+        if (d == null) { src.sendError(notFound(id)); return 0; }
+        SlotManager.clearAllFaces(id);
+        SlotManager.saveAll();
+        src.sendMessage(Text.literal("§a[CustomBlocks] All face overrides cleared on '" + id + "'."));
+        return 1;
+    }
+
+    private static int cmdColorChangerAll(ServerCommandSource src) {
+        // Give all 3 color squares silently, then send one combined message
+        int given = 0;
+        for (String col : new String[]{"black", "yellow", "green"}) {
+            given += cmdGiveSquareSilent(src, col);
+        }
+        if (given > 0)
+            src.sendMessage(Text.literal("§a[CustomBlocks] Given all 3 color squares! Right-click any Custom Block to swap its color."));
+        else
+            src.sendError(Text.literal("§cCould not give squares. Run as a player."));
+        return given > 0 ? 1 : 0;
+    }
+
+    /** Like cmdGiveSquare but without the success message — used by colorchanger. */
+    private static int cmdGiveSquareSilent(ServerCommandSource src, String color) {
+        String normalized = color.toLowerCase().trim();
+        net.minecraft.util.Identifier sqId =
+            net.minecraft.util.Identifier.of(CustomBlocksMod.MOD_ID, normalized + "_square");
+        net.minecraft.item.Item sqItem = net.minecraft.registry.Registries.ITEM.get(sqId);
+        if (sqItem == null || sqItem == net.minecraft.item.Items.AIR) return 0;
+        try {
+            ServerPlayerEntity self = src.getPlayerOrThrow();
+            self.getInventory().insertStack(new ItemStack(sqItem, 1));
+            return 1;
+        } catch (Exception ex) { return 0; }
+    }
+
+    private static int cmdGiveSquare(ServerCommandSource src, String color) {
+        String normalized = color.toLowerCase().trim();
+        if (!normalized.equals("black") && !normalized.equals("yellow") && !normalized.equals("green")) {
+            src.sendError(Text.literal("§cValid colors: black, yellow, green")); return 0;
+        }
+        net.minecraft.util.Identifier sqId =
+            net.minecraft.util.Identifier.of(CustomBlocksMod.MOD_ID, normalized + "_square");
+        net.minecraft.item.Item sqItem = net.minecraft.registry.Registries.ITEM.get(sqId);
+        if (sqItem == null || sqItem == net.minecraft.item.Items.AIR) {
+            src.sendError(Text.literal("§cSquare item not found — is the mod loaded?")); return 0;
+        }
+        try {
+            ServerPlayerEntity self = src.getPlayerOrThrow();
+            self.getInventory().insertStack(new ItemStack(sqItem, 1));
+            String label = Character.toUpperCase(normalized.charAt(0)) + normalized.substring(1);
+            src.sendMessage(Text.literal("§a[CustomBlocks] Given " + label + " Square. Right-click a Custom Block to swap color!"));
+        } catch (Exception ex) {
+            src.sendError(Text.literal("§cRun as a player.")); return 0;
+        }
         return 1;
     }
 
@@ -526,6 +724,9 @@ public class CustomBlockCommand {
             case "sethardness" -> "§cUsage: /customblock sethardness <id> <-1 to 50>  (-1=unbreakable)";
             case "setsound"    -> "§cUsage: /customblock setsound <id> <stone|wood|grass|metal|glass|sand|wool>";
             case "settabicon"  -> "§cUsage: /customblock settabicon <url>";
+            case "clearface"   -> "§cUsage: /customblock clearface <id> <top|bottom|north|south|east|west>";
+            case "givesquare"  -> "§cUsage: /customblock givesquare <black|yellow|green>";
+            case "clearallfaces"-> "§cUsage: /customblock clearallfaces <id>";
             default -> "§cUsage: /customblock help";
         }));
         return 0;
@@ -539,16 +740,23 @@ public class CustomBlockCommand {
         return id.toLowerCase().replaceAll("[^a-z0-9_]", "_");
     }
 
+    private static final java.net.http.HttpClient HTTP_CLIENT =
+            java.net.http.HttpClient.newBuilder()
+                    .connectTimeout(Duration.ofSeconds(10))
+                    .build();
+
     private static byte[] download(String url) throws IOException, InterruptedException {
-        HttpClient http = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(10)).build();
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .header("User-Agent", "CustomBlocksMod/1.0")
                 .timeout(Duration.ofSeconds(15)).build();
-        HttpResponse<byte[]> res = http.send(req, HttpResponse.BodyHandlers.ofByteArray());
+        HttpResponse<byte[]> res = HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofByteArray());
         if (res.statusCode() != 200)
             throw new IOException("HTTP " + res.statusCode());
-        return res.body();
+        byte[] body = res.body();
+        if (body.length > 10_485_760)
+            throw new IOException("Image too large (max 10MB, got " + (body.length / 1024) + "KB)");
+        return body;
     }
 
     private static void thread(Runnable r) {
