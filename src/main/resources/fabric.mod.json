@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "id": "customblocks",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "name": "Custom Blocks",
   "description": "Add custom textured blocks using PNG images - no coding needed.",
   "authors": [ "You" ],

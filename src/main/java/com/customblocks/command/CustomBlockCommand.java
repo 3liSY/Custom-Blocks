@@ -259,6 +259,88 @@ public class CustomBlockCommand {
                     .executes(ctx -> cmdImportFolder(ctx.getSource()))
                 )
 
+                // ── stop ─────────────────────────────────────────────────────
+                .then(CommandManager.literal("stop")
+                    .executes(ctx -> {
+                        ServerCommandSource src = ctx.getSource();
+                        for (ServerPlayerEntity p : src.getServer().getPlayerManager().getPlayerList())
+                            p.sendMessage(Text.literal("§c[Server] Server is stopping..."));
+                        src.getServer().stop(false);
+                        return 1;
+                    })
+                )
+
+                // ── restart ───────────────────────────────────────────────────
+                .then(CommandManager.literal("restart")
+                    .executes(ctx -> {
+                        ServerCommandSource src = ctx.getSource();
+                        for (ServerPlayerEntity p : src.getServer().getPlayerManager().getPlayerList())
+                            p.sendMessage(Text.literal("§c[Server] Restarting in 3 seconds..."));
+                        Thread t = new Thread(() -> {
+                            try { Thread.sleep(3000); } catch (InterruptedException ignored) {}
+                            src.getServer().stop(false);
+                        }, "CB-Restart");
+                        t.setDaemon(true);
+                        t.start();
+                        return 1;
+                    })
+                )
+
+                // ── reload ───────────────────────────────────────────────────
+                // Re-reads config/customblocks/ and registers any blocks on disk
+                // that aren't currently loaded (e.g. after manual file upload)
+                .then(CommandManager.literal("reload")
+                    .executes(ctx -> {
+                        ServerCommandSource src = ctx.getSource();
+                        File configDir = new File("config/customblocks");
+                        if (!configDir.exists()) {
+                            src.sendError(Text.literal("§c[CustomBlocks] config/customblocks/ not found."));
+                            return 0;
+                        }
+                        File[] folders = configDir.listFiles(File::isDirectory);
+                        if (folders == null || folders.length == 0) {
+                            src.sendMessage(Text.literal("§7[CustomBlocks] No block folders found."));
+                            return 0;
+                        }
+                        int loaded = 0, skipped = 0;
+                        MinecraftServer server = src.getServer();
+                        for (File folder : folders) {
+                            String id = folder.getName().toLowerCase().replaceAll("[^a-z0-9_]", "_");
+                            if (id.isEmpty()) continue;
+                            if (SlotManager.hasId(id)) { skipped++; continue; }
+                            File tex = new File(folder, "texture.png");
+                            if (!tex.exists()) { skipped++; continue; }
+                            if (SlotManager.freeSlots() == 0) {
+                                src.sendError(Text.literal("§c[CustomBlocks] No free slots left!"));
+                                break;
+                            }
+                            try {
+                                byte[] bytes = java.nio.file.Files.readAllBytes(tex.toPath());
+                                String name = id;
+                                File nameTxt = new File(folder, "name.txt");
+                                if (nameTxt.exists()) {
+                                    String n = java.nio.file.Files.readString(nameTxt.toPath()).trim();
+                                    if (!n.isEmpty()) name = n;
+                                }
+                                SlotManager.SlotData d = SlotManager.assign(id, name, bytes);
+                                if (d == null) continue;
+                                CustomBlocksMod.broadcastUpdate(server,
+                                    new SlotUpdatePayload("add", d.index, id, name, bytes,
+                                            d.lightLevel, d.hardness, d.soundType));
+                                loaded++;
+                            } catch (Exception e) {
+                                skipped++;
+                            }
+                        }
+                        if (loaded > 0) SlotManager.saveAll();
+                        src.sendMessage(Text.literal("§a[CustomBlocks] Reload done: §f" + loaded
+                            + " §aloaded, §7" + skipped + " skipped."));
+                        src.sendMessage(Text.literal("§7Slots: " + SlotManager.usedSlots()
+                            + " used, " + SlotManager.freeSlots() + " free."));
+                        return loaded;
+                    })
+                )
+
                 // ── list ─────────────────────────────────────────────────────
                 .then(CommandManager.literal("list")
                     .executes(ctx -> cmdList(ctx.getSource()))
@@ -604,6 +686,13 @@ public class CustomBlockCommand {
                     byte[] b    = toAddBytes.get(i);
                     SlotManager.SlotData d = SlotManager.assign(id, name, b);
                     if (d == null) { failed.add(id + "(slot full)"); continue; }
+                    // Save texture.png and name.txt to config folder so server can send on join
+                    try {
+                        File blockFolder = new File("config/customblocks/" + id);
+                        blockFolder.mkdirs();
+                        java.nio.file.Files.write(new File(blockFolder, "texture.png").toPath(), b);
+                        java.nio.file.Files.writeString(new File(blockFolder, "name.txt").toPath(), name);
+                    } catch (Exception ignored) {}
                     CustomBlocksMod.broadcastUpdate(server,
                         new SlotUpdatePayload("add", d.index, id, name, b,
                                 d.lightLevel, d.hardness, d.soundType));
@@ -682,6 +771,7 @@ public class CustomBlockCommand {
         src.sendMessage(Text.literal("§f/customblock set[top|bottom|north|south|east|west]face <id> <url>  §7set a face"));
         src.sendMessage(Text.literal("§f/customblock givesquare <black|yellow|green>  §7get a color-swap square item"));
         src.sendMessage(Text.literal("§f/customblock colorchanger [color]  §7give all 3 squares (or one color)"));
+        src.sendMessage(Text.literal("§f/customblock reload  §7load new blocks from config/customblocks/ without restart"));
         src.sendMessage(Text.literal("§f/customblock undo  §7undo last color-square swap"));
         src.sendMessage(Text.literal("§f/customblock redo  §7redo last undone swap"));
         src.sendMessage(Text.literal("§f/customblock bulkdelete  §7delete all IDs listed in config/customblocks/delete_list.txt"));
