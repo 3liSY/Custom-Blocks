@@ -33,4 +33,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: customblocks-mod
-          path: build/libs/customblocks-1.0.0.jar
+          path: build/libs/*.jar
