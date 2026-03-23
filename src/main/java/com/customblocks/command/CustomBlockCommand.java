@@ -279,6 +279,80 @@ public class CustomBlockCommand {
                         })
                         .executes(ctx -> cmdGiveSquare(ctx.getSource(),
                             StringArgumentType.getString(ctx, "color")))))
+
+                // ── undo ─────────────────────────────────────────────────────
+                .then(CommandManager.literal("undo")
+                    .executes(ctx -> {
+                        ServerCommandSource src = ctx.getSource();
+                        try {
+                            ServerPlayerEntity player = src.getPlayerOrThrow();
+                            boolean ok = com.customblocks.block.UndoHistory.undo(player);
+                            src.sendMessage(Text.literal(ok
+                                ? "§a[CustomBlocks] Undone!"
+                                : "§7[CustomBlocks] Nothing to undo."));
+                            return ok ? 1 : 0;
+                        } catch (Exception ex) {
+                            src.sendError(Text.literal("§c[CustomBlocks] Only players can undo."));
+                            return 0;
+                        }
+                    })
+                )
+
+                // ── redo ─────────────────────────────────────────────────────
+                .then(CommandManager.literal("redo")
+                    .executes(ctx -> {
+                        ServerCommandSource src = ctx.getSource();
+                        try {
+                            ServerPlayerEntity player = src.getPlayerOrThrow();
+                            boolean ok = com.customblocks.block.UndoHistory.redo(player);
+                            src.sendMessage(Text.literal(ok
+                                ? "§a[CustomBlocks] Redone!"
+                                : "§7[CustomBlocks] Nothing to redo."));
+                            return ok ? 1 : 0;
+                        } catch (Exception ex) {
+                            src.sendError(Text.literal("§c[CustomBlocks] Only players can redo."));
+                            return 0;
+                        }
+                    })
+                )
+
+                // ── bulkdelete — reads config/customblocks/delete_list.txt ───
+                .then(CommandManager.literal("bulkdelete")
+                    .executes(ctx -> {
+                        ServerCommandSource src = ctx.getSource();
+                        File file = new File("config/customblocks/delete_list.txt");
+                        if (!file.exists()) {
+                            src.sendError(Text.literal("§c[CustomBlocks] File not found: config/customblocks/delete_list.txt"));
+                            src.sendMessage(Text.literal("§7Create that file with one block ID per line, then run /cb bulkdelete."));
+                            return 0;
+                        }
+                        try {
+                            java.util.List<String> lines = java.nio.file.Files.readAllLines(file.toPath());
+                            int deleted = 0, skipped = 0;
+                            for (String line : lines) {
+                                String id = line.trim().toLowerCase();
+                                if (id.isEmpty() || id.startsWith("#")) continue;
+                                if (SlotManager.hasId(id)) {
+                                    SlotManager.SlotData d = SlotManager.getById(id);
+                                    CustomBlocksMod.broadcastUpdate(src.getServer(),
+                                        new SlotUpdatePayload("remove", d.index, id, null, null, 0, 0, "stone"));
+                                    SlotManager.remove(id);
+                                    deleted++;
+                                } else {
+                                    skipped++;
+                                }
+                            }
+                            if (deleted > 0) SlotManager.saveAll();
+                            src.sendMessage(Text.literal("§a[CustomBlocks] Bulk delete done: §f"
+                                + deleted + " §adeleted, §7" + skipped + " not found."));
+                            src.sendMessage(Text.literal("§7Slots now: " + SlotManager.usedSlots() + " used, " + SlotManager.freeSlots() + " free."));
+                            return deleted;
+                        } catch (IOException e) {
+                            src.sendError(Text.literal("§c[CustomBlocks] Error reading file: " + e.getMessage()));
+                            return 0;
+                        }
+                    })
+                )
             ;
 
             // Register under /customblock
@@ -608,6 +682,9 @@ public class CustomBlockCommand {
         src.sendMessage(Text.literal("§f/customblock set[top|bottom|north|south|east|west]face <id> <url>  §7set a face"));
         src.sendMessage(Text.literal("§f/customblock givesquare <black|yellow|green>  §7get a color-swap square item"));
         src.sendMessage(Text.literal("§f/customblock colorchanger [color]  §7give all 3 squares (or one color)"));
+        src.sendMessage(Text.literal("§f/customblock undo  §7undo last color-square swap"));
+        src.sendMessage(Text.literal("§f/customblock redo  §7redo last undone swap"));
+        src.sendMessage(Text.literal("§f/customblock bulkdelete  §7delete all IDs listed in config/customblocks/delete_list.txt"));
         src.sendMessage(Text.literal("§7Tip: use §f/cb§7 as a short alias for §f/customblock§7!"));
         src.sendMessage(Text.literal("§f/customblock clearface <id> <face>  §7revert one face to default"));
         src.sendMessage(Text.literal("§f/customblock clearallfaces <id>  §7revert all faces to default"));

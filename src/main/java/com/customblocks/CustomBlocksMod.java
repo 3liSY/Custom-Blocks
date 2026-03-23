@@ -76,9 +76,9 @@ public class CustomBlocksMod implements ModInitializer {
 
         // ── Color Square items ────────────────────────────────────────────────
         // 3 special items: right-click a CustomBlock to swap it to the same ID with a new color prefix
-        String[][] squares = {{"black_",  "Black"},  {"yellow_", "Yellow"}, {"green_",  "Green"}};
+        String[][] squares = {{"black", "Black"}, {"yellow", "Yellow"}, {"green", "Green"}};
         for (String[] sq : squares) {
-            Identifier sqId = Identifier.of(MOD_ID, sq[0] + "square");
+            Identifier sqId = Identifier.of(MOD_ID, sq[0] + "_square");
             ColorSquareItem sqItem = new ColorSquareItem(sq[0], sq[1],
                     new Item.Settings().maxCount(1));
             Registry.register(Registries.ITEM, sqId, sqItem);

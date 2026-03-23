@@ -4,6 +4,7 @@ import com.customblocks.CustomBlocksMod;
 import com.customblocks.SlotManager;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
+import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
 import net.fabricmc.api.EnvType;
 import net.fabricmc.api.Environment;
@@ -138,12 +139,39 @@ public class ResourcePackGenerator {
                         Integer.parseInt(rgb[2].trim()));
                 File sqTex = new File(assets, "textures/item/" + itemId + ".png");
                 Files.write(sqTex.toPath(), pngData);
-                // Item model — flat generated sprite
+                // Item model — flat generated sprite, scaled down in all views
                 JsonObject sqTex2 = new JsonObject();
                 sqTex2.addProperty("layer0", MOD_ID + ":item/" + itemId);
                 JsonObject sqModel = new JsonObject();
                 sqModel.addProperty("parent", "minecraft:item/generated");
                 sqModel.add("textures", sqTex2);
+
+                // Display overrides to make the square smaller in hand and inventory
+                JsonObject display = new JsonObject();
+                for (String view : new String[]{"thirdperson_righthand","thirdperson_lefthand",
+                                                "firstperson_righthand","firstperson_lefthand","fixed"}) {
+                    JsonObject v = new JsonObject();
+                    JsonArray sc = new JsonArray(); sc.add(0.5); sc.add(0.5); sc.add(0.5);
+                    JsonArray tr = new JsonArray(); tr.add(0);   tr.add(0);   tr.add(0);
+                    JsonArray ro = new JsonArray(); ro.add(0);   ro.add(0);   ro.add(0);
+                    v.add("scale", sc); v.add("translation", tr); v.add("rotation", ro);
+                    display.add(view, v);
+                }
+                JsonObject gui = new JsonObject();
+                JsonArray gs = new JsonArray(); gs.add(0.6); gs.add(0.6); gs.add(0.6);
+                JsonArray gt = new JsonArray(); gt.add(0);   gt.add(0);   gt.add(0);
+                JsonArray gr = new JsonArray(); gr.add(0);   gr.add(0);   gr.add(0);
+                gui.add("scale", gs); gui.add("translation", gt); gui.add("rotation", gr);
+                display.add("gui", gui);
+
+                JsonObject gnd = new JsonObject();
+                JsonArray gns = new JsonArray(); gns.add(0.4); gns.add(0.4); gns.add(0.4);
+                JsonArray gnt = new JsonArray(); gnt.add(0); gnt.add(-2); gnt.add(0);
+                JsonArray gnr = new JsonArray(); gnr.add(0); gnr.add(0);  gnr.add(0);
+                gnd.add("scale", gns); gnd.add("translation", gnt); gnd.add("rotation", gnr);
+                display.add("ground", gnd);
+
+                sqModel.add("display", display);
                 writeJson(sqModel, new File(assets, "models/item/" + itemId + ".json"));
             }
 
