@@ -10,14 +10,20 @@ base {
     archivesName = 'Custom-Blocks-Ultimate-v10'
 }
 
+repositories {
+    mavenCentral()
+    maven { url 'https://maven.fabricmc.net/' }
+    maven { url 'https://libraries.minecraft.net/' }
+}
+
 dependencies {
-    // Minecraft Core
+    // Fabric Core
     minecraft "com.mojang:minecraft:1.21.1"
     mappings  "net.fabricmc:yarn:1.21.1+build.3:v2"
     modImplementation "net.fabricmc:fabric-loader:0.16.7"
     modImplementation "net.fabricmc.fabric-api:fabric-api:0.108.0+1.21.1"
 
-    // TwelveMonkeys Image Engine (v10)
+    // TwelveMonkeys Image Engine
     def tm = "3.12.0"
     implementation "com.twelvemonkeys.imageio:imageio-core:${tm}"
     implementation "com.twelvemonkeys.imageio:imageio-webp:${tm}"
@@ -35,13 +41,6 @@ dependencies {
     include "com.twelvemonkeys.common:common-lang:${tm}"
     include "com.twelvemonkeys.common:common-io:${tm}"
     include "com.twelvemonkeys.common:common-image:${tm}"
-}
-
-processResources {
-    inputs.property "version", project.version
-    filesMatching("fabric.mod.json") {
-        expand "version": project.version
-    }
 }
 
 tasks.withType(JavaCompile).configureEach {

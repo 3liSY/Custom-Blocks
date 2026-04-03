@@ -24,8 +24,8 @@ jobs:
           gradle-version: 8.8
 
       - name: Build Mod
-        # --refresh-dependencies fixes the "Could not find" and "Disowned lock" errors
-        run: gradle clean build --refresh-dependencies --no-build-cache
+        # Standard clean build to avoid cache corruption and timeout locks
+        run: gradle clean build --no-build-cache
 
       - name: List build outputs
         run: ls -la build/libs/
@@ -34,4 +34,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Custom-Blocks-Ultimate-v10
+          # This captures the remapped (final) JAR for your mod
           path: build/libs/Custom-Blocks-Ultimate-v10-*.jar
