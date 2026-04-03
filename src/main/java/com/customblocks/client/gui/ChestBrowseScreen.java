@@ -8,6 +8,7 @@ import net.minecraft.client.MinecraftClient;
 import net.minecraft.client.gui.DrawContext;
 import net.minecraft.client.gui.screen.Screen;
 import net.minecraft.client.gui.widget.TextFieldWidget;
+import net.minecraft.client.util.InputUtil;
 import net.minecraft.text.Text;
 import net.minecraft.util.Identifier;
 
@@ -159,8 +160,9 @@ public class ChestBrowseScreen extends Screen {
             int sx = cx + 10 + col * SLOT_SIZE, sy = cy + 30 + row * SLOT_SIZE;
             if (mx >= sx && mx < sx+SLOT_SIZE && my >= sy && my < sy+SLOT_SIZE) {
                 ClientSlotData d = displayed.get(start + i);
-                handleSlotClick(d, btn, hasShiftDown(), hasControlDown(),
-                        net.minecraft.client.option.KeyBinding.isKeyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_ALT));
+                // Fixed: check Alt key using InputUtil
+                boolean altPressed = InputUtil.isKeyPressed(MinecraftClient.getInstance().getWindow().getHandle(), org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_ALT);
+                handleSlotClick(d, btn, hasShiftDown(), hasControlDown(), altPressed);
                 return true;
             }
         }
@@ -173,7 +175,6 @@ public class ChestBrowseScreen extends Screen {
         }
         int count = shift ? 64 : (ctrl ? 64 : 1); // ctrl gives max stack
         // Send give command via chat
-        String cmd = "/cb give " + d.customId + " @s " + count;
         MinecraftClient mc = MinecraftClient.getInstance();
         if (mc.player != null) mc.player.networkHandler.sendChatCommand(
                 "cb give " + d.customId + " " + mc.player.getName().getString() + " " + count);
