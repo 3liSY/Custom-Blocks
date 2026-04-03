@@ -205,7 +205,7 @@ public class CustomBlocksMod implements ModInitializer {
         }
 
         byte[] tex;
-        try { tex = ImageProcessor.processBytes(payload.texture()); }
+        tex = null;
         catch (Exception e) {
             player.sendMessage(Text.literal("§c[CustomBlocks] Invalid image: " + e.getMessage()), false);
             return;

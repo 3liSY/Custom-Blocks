@@ -160,7 +160,7 @@ public class ChestBrowseScreen extends Screen {
             if (mx >= sx && mx < sx+SLOT_SIZE && my >= sy && my < sy+SLOT_SIZE) {
                 ClientSlotData d = displayed.get(start + i);
                 handleSlotClick(d, btn, hasShiftDown(), hasControlDown(),
-                        net.minecraft.client.option.KeyBinding.isKeyPressed(net.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_ALT));
+                        net.minecraft.client.option.KeyBinding.isKeyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_LEFT_ALT));
                 return true;
             }
         }

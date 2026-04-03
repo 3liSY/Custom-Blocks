@@ -97,7 +97,6 @@ public class CustomBlocksScreen extends Screen {
         // Search bar
         searchField = new TextFieldWidget(textRenderer, gridX, 6, gridW - 60, 18, Text.literal(""));
         searchField.setMaxLength(128);
-        searchField.setPlaceholderText(Text.literal("🔍 Search blocks…"));
         searchField.setChangedListener(s -> { search = s; scroll = 0; refreshFiltered(); });
         addDrawableChild(searchField);
 
@@ -171,13 +170,10 @@ public class CustomBlocksScreen extends Screen {
 
     private void buildCreatePanel(int rp, int ry) {
         fldCreateId = new TextFieldWidget(textRenderer, rp, ry, RIGHT_W, 18, Text.literal(""));
-        fldCreateId.setPlaceholderText(Text.literal("block_id")); fldCreateId.setMaxLength(64);
         addDrawableChild(fldCreateId); ry += 22;
         fldCreateName = new TextFieldWidget(textRenderer, rp, ry, RIGHT_W, 18, Text.literal(""));
-        fldCreateName.setPlaceholderText(Text.literal("Display Name")); fldCreateName.setMaxLength(64);
         addDrawableChild(fldCreateName); ry += 22;
         fldCreateUrl = new TextFieldWidget(textRenderer, rp, ry, RIGHT_W, 18, Text.literal(""));
-        fldCreateUrl.setPlaceholderText(Text.literal("https://…/texture.png")); fldCreateUrl.setMaxLength(512);
         addDrawableChild(fldCreateUrl); ry += 22;
         btnCreateOk = ButtonWidget.builder(Text.literal("§a✔ Create"), b -> doCreate())
                 .dimensions(rp, ry, RIGHT_W/2-1, 18).build();
@@ -193,7 +189,6 @@ public class CustomBlocksScreen extends Screen {
 
     private void buildRetexPanel(int rp, int ry) {
         fldRetexUrl = new TextFieldWidget(textRenderer, rp, ry, RIGHT_W, 18, Text.literal(""));
-        fldRetexUrl.setPlaceholderText(Text.literal("New texture URL")); fldRetexUrl.setMaxLength(512);
         addDrawableChild(fldRetexUrl); ry += 22;
         btnRetexOk = ButtonWidget.builder(Text.literal("§a✔ Apply"), b -> doRetexture())
                 .dimensions(rp, ry, RIGHT_W/2-1, 18).build();

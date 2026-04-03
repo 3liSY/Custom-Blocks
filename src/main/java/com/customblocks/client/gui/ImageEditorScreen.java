@@ -76,7 +76,6 @@ public class ImageEditorScreen extends Screen {
         urlField = new TextFieldWidget(textRenderer, px + 10, py + 30, panelW - 80, 20,
                 Text.literal("Image URL or paste"));
         urlField.setMaxLength(1024);
-        urlField.setPlaceholderText(Text.literal("https://example.com/texture.png"));
         addDrawableChild(urlField);
 
         btnLoad = ButtonWidget.builder(Text.literal("Load"), btn -> loadFromUrl())
@@ -86,11 +85,9 @@ public class ImageEditorScreen extends Screen {
         // ID / Name fields (only for create)
         if ("create".equals(action)) {
             idField = new TextFieldWidget(textRenderer, px + 10, py + 60, 140, 20, Text.literal("Block ID"));
-            idField.setMaxLength(64); idField.setPlaceholderText(Text.literal("my_block"));
             addDrawableChild(idField);
 
             nameField = new TextFieldWidget(textRenderer, px + 160, py + 60, 140, 20, Text.literal("Display Name"));
-            nameField.setMaxLength(64); nameField.setPlaceholderText(Text.literal("My Block"));
             addDrawableChild(nameField);
         }
 
