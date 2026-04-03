@@ -9,7 +9,8 @@ jobs:
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout Code
+        uses: actions/checkout@v4
 
       - name: Set up JDK 21
         uses: actions/setup-java@v4
@@ -17,16 +18,14 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      # Automatically sets up the wrapper so you don't have to curl it manually
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.8
 
       - name: Build Mod
-        run: |
-          chmod +x gradlew
-          ./gradlew clean build --no-build-cache
+        # Use 'gradle' directly to avoid the missing gradle-wrapper.jar error
+        run: gradle clean build --no-build-cache
 
       - name: List build outputs
         run: ls -la build/libs/
@@ -35,5 +34,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: Custom-Blocks-Ultimate-v10
-          # Using a wildcard (*) ensures it finds the JAR even if the version numbers shift
           path: build/libs/Custom-Blocks-Ultimate-v10-*.jar
