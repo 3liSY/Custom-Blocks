@@ -1,10 +1,10 @@
 {
   "schemaVersion": 1,
   "id": "customblocks",
-  "version": "1.0.1",
-  "name": "Custom Blocks",
-  "description": "Add custom textured blocks using PNG images - no coding needed.",
-  "authors": [ "You" ],
+  "version": "${version}",
+  "name": "Custom Blocks Ultimate v10",
+  "description": "512 custom textured blocks: pic editor, chest GUI, animated textures, glow shader, per-face textures, sounds, permissions, recycle bin, undo, templates, HTTP pack server, and more.",
+  "authors": [ "CustomBlocks Team" ],
   "license": "MIT",
   "environment": "*",
   "entrypoints": {
@@ -13,8 +13,9 @@
   },
   "mixins": [],
   "depends": {
-    "fabricloader": ">=0.16.0",
-    "fabric-api":   "*",
-    "minecraft":    "~1.21.1"
+    "fabricloader": ">=0.16.7",
+    "fabric-api":   ">=0.108.0",
+    "minecraft":    "~1.21.1",
+    "java":         ">=21"
   }
 }

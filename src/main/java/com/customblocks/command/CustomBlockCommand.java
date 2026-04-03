@@ -1,934 +1,387 @@
 package com.customblocks.command;
 
-import com.customblocks.CustomBlocksMod;
-import com.customblocks.SlotManager;
+import com.customblocks.*;
 import com.customblocks.block.SlotBlock;
+import com.customblocks.network.FullSyncPayload;
 import com.customblocks.network.SlotUpdatePayload;
-import com.mojang.brigadier.arguments.FloatArgumentType;
-import com.mojang.brigadier.arguments.IntegerArgumentType;
-import com.mojang.brigadier.arguments.StringArgumentType;
+import com.customblocks.util.ImageProcessor;
+import com.mojang.brigadier.arguments.*;
 import com.mojang.brigadier.suggestion.SuggestionProvider;
 import net.fabricmc.fabric.api.command.v2.CommandRegistrationCallback;
+import net.fabricmc.fabric.api.networking.v1.ServerPlayNetworking;
 import net.minecraft.command.argument.EntityArgumentType;
 import net.minecraft.item.ItemStack;
-import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.command.CommandManager;
 import net.minecraft.server.command.ServerCommandSource;
 import net.minecraft.server.network.ServerPlayerEntity;
 import net.minecraft.text.Text;
 
 import java.io.File;
-import java.io.IOException;
-import java.net.URI;
-import java.net.http.*;
-import java.time.Duration;
-import java.util.Collection;
-import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 
 public class CustomBlockCommand {
 
-    private static final SuggestionProvider<ServerCommandSource> BLOCK_SUGGESTIONS =
-            (ctx, builder) -> {
-                for (String id : SlotManager.allCustomIds()) builder.suggest(id);
-                return builder.buildFuture();
-            };
+    private static final SuggestionProvider<ServerCommandSource> BLOCK_IDS =
+            (ctx, b) -> { SlotManager.allCustomIds().forEach(b::suggest); return b.buildFuture(); };
+    private static final SuggestionProvider<ServerCommandSource> SOUNDS =
+            (ctx, b) -> { SlotManager.SOUND_KEYS.forEach(b::suggest); return b.buildFuture(); };
+    private static final SuggestionProvider<ServerCommandSource> FACES =
+            (ctx, b) -> { SlotManager.FACE_KEYS.forEach(b::suggest); return b.buildFuture(); };
+    private static final SuggestionProvider<ServerCommandSource> RECYCLE_IDS =
+            (ctx, b) -> { SlotManager.getRecycleBin().forEach(d -> b.suggest(d.customId)); return b.buildFuture(); };
+    private static final SuggestionProvider<ServerCommandSource> TEMPLATE_IDS =
+            (ctx, b) -> { TemplateManager.allTemplates().forEach(t -> b.suggest(t.id())); return b.buildFuture(); };
 
-    private static final SuggestionProvider<ServerCommandSource> SOUND_SUGGESTIONS =
-            (ctx, builder) -> {
-                for (String s : new String[]{"stone","wood","grass","metal","glass","sand","wool"})
-                    builder.suggest(s);
-                return builder.buildFuture();
-            };
-
-
-
-    private static final SuggestionProvider<ServerCommandSource> FACE_SUGGESTIONS =
-            (ctx, builder) -> {
-                for (String f : SlotManager.FACE_KEYS) builder.suggest(f);
-                return builder.buildFuture();
-            };
     public static void register() {
         CommandRegistrationCallback.EVENT.register((dispatcher, reg, env) -> {
-            // Build the command tree once, register under both /customblock and /cb
-            var tree = CommandManager.literal("customblock")
-                .requires(src -> src.hasPermissionLevel(2))
-
-                // ── createurl <id> <name> <url> ──────────────────────────────
-                .then(CommandManager.literal("createurl")
-                    .then(CommandManager.argument("id", StringArgumentType.word())
-                        .then(CommandManager.argument("name", StringArgumentType.word())
-                            .then(CommandManager.argument("url", StringArgumentType.greedyString())
-                                .executes(ctx -> cmdCreate(ctx.getSource(),
-                                    StringArgumentType.getString(ctx, "id"),
-                                    StringArgumentType.getString(ctx, "name").replace("_", " "),
-                                    StringArgumentType.getString(ctx, "url").trim()))
-                            )
-                        )
-                    )
-                )
-
-                // ── delete <id> ──────────────────────────────────────────────
-                .then(CommandManager.literal("delete")
-                    .executes(ctx -> usage(ctx.getSource(), "delete"))
-                    .then(CommandManager.argument("id", StringArgumentType.word())
-                        .suggests(BLOCK_SUGGESTIONS)
-                        .executes(ctx -> cmdDelete(ctx.getSource(),
-                            StringArgumentType.getString(ctx, "id")))
-                    )
-                )
-
-                // ── rename <id> <newname> ────────────────────────────────────
-                .then(CommandManager.literal("rename")
-                    .executes(ctx -> usage(ctx.getSource(), "rename"))
-                    .then(CommandManager.argument("id", StringArgumentType.word())
-                        .suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("newname", StringArgumentType.greedyString())
-                            .executes(ctx -> cmdRename(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"),
-                                StringArgumentType.getString(ctx, "newname").replace("_", " ")))
-                        )
-                    )
-                )
-
-                // ── retexture <id> <url> ─────────────────────────────────────
-                .then(CommandManager.literal("retexture")
-                    .executes(ctx -> usage(ctx.getSource(), "retexture"))
-                    .then(CommandManager.argument("id", StringArgumentType.word())
-                        .suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
-                            .executes(ctx -> cmdRetexture(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"),
-                                StringArgumentType.getString(ctx, "url").trim()))
-                        )
-                    )
-                )
-
-                // ── give <id> [amount] [player] ─────────────────────────────
-                .then(CommandManager.literal("give")
-                    .executes(ctx -> usage(ctx.getSource(), "give"))
-                    .then(CommandManager.argument("id", StringArgumentType.word())
-                        .suggests(BLOCK_SUGGESTIONS)
-                        .executes(ctx -> cmdGive(ctx.getSource(),
-                            StringArgumentType.getString(ctx, "id"), 1, null))
-                        .then(CommandManager.argument("amount", IntegerArgumentType.integer(1, 64))
-                            .executes(ctx -> cmdGive(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"),
-                                IntegerArgumentType.getInteger(ctx, "amount"), null))
-                            .then(CommandManager.argument("player", EntityArgumentType.players())
-                                .executes(ctx -> cmdGive(ctx.getSource(),
-                                    StringArgumentType.getString(ctx, "id"),
-                                    IntegerArgumentType.getInteger(ctx, "amount"),
-                                    EntityArgumentType.getPlayers(ctx, "player"))))
-                        )
-                        .then(CommandManager.argument("player", EntityArgumentType.players())
-                            .executes(ctx -> cmdGive(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"), 1,
-                                EntityArgumentType.getPlayers(ctx, "player")))
-                        )
-                    )
-                )
-
-                // ── setglow <id> <0-15> ──────────────────────────────────────
-                .then(CommandManager.literal("setglow")
-                    .executes(ctx -> usage(ctx.getSource(), "setglow"))
-                    .then(CommandManager.argument("id", StringArgumentType.word())
-                        .suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("level", IntegerArgumentType.integer(0, 15))
-                            .executes(ctx -> cmdSetGlow(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"),
-                                IntegerArgumentType.getInteger(ctx, "level")))
-                        )
-                    )
-                )
-
-                // ── sethardness <id> <value> ─────────────────────────────────
-                .then(CommandManager.literal("sethardness")
-                    .executes(ctx -> usage(ctx.getSource(), "sethardness"))
-                    .then(CommandManager.argument("id", StringArgumentType.word())
-                        .suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("hardness", FloatArgumentType.floatArg(-1f, 50f))
-                            .executes(ctx -> cmdSetHardness(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"),
-                                FloatArgumentType.getFloat(ctx, "hardness")))
-                        )
-                    )
-                )
-
-                // ── setsound <id> <type> ─────────────────────────────────────
-                .then(CommandManager.literal("setsound")
-                    .executes(ctx -> usage(ctx.getSource(), "setsound"))
-                    .then(CommandManager.argument("id", StringArgumentType.word())
-                        .suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("type", StringArgumentType.word())
-                            .suggests(SOUND_SUGGESTIONS)
-                            .executes(ctx -> cmdSetSound(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"),
-                                StringArgumentType.getString(ctx, "type")))
-                        )
-                    )
-                )
-
-                // ── settabicon <url> ─────────────────────────────────────────
-                .then(CommandManager.literal("settabicon")
-                    .executes(ctx -> usage(ctx.getSource(), "settabicon"))
-                    .then(CommandManager.argument("url", StringArgumentType.greedyString())
-                        .executes(ctx -> cmdSetTabIcon(ctx.getSource(),
-                            StringArgumentType.getString(ctx, "url").trim()))
-                    )
-                )
-
-
-                // ── per-face texture commands ─────────────────────────────────────────
-                .then(CommandManager.literal("settopface")
-                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
-                            .executes(ctx -> cmdSetFace(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"), "top",
-                                StringArgumentType.getString(ctx, "url").trim())))))
-
-                .then(CommandManager.literal("setbottomface")
-                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
-                            .executes(ctx -> cmdSetFace(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"), "bottom",
-                                StringArgumentType.getString(ctx, "url").trim())))))
-
-                .then(CommandManager.literal("setnorthface")
-                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
-                            .executes(ctx -> cmdSetFace(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"), "north",
-                                StringArgumentType.getString(ctx, "url").trim())))))
-
-                .then(CommandManager.literal("setsouthface")
-                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
-                            .executes(ctx -> cmdSetFace(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"), "south",
-                                StringArgumentType.getString(ctx, "url").trim())))))
-
-                .then(CommandManager.literal("seteastface")
-                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
-                            .executes(ctx -> cmdSetFace(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"), "east",
-                                StringArgumentType.getString(ctx, "url").trim())))))
-
-                .then(CommandManager.literal("setwestface")
-                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
-                            .executes(ctx -> cmdSetFace(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"), "west",
-                                StringArgumentType.getString(ctx, "url").trim())))))
-
-                .then(CommandManager.literal("clearface")
-                    .executes(ctx -> usage(ctx.getSource(), "clearface"))
-                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
-                        .then(CommandManager.argument("face", StringArgumentType.word())
-                            .suggests(FACE_SUGGESTIONS)
-                            .executes(ctx -> cmdClearFace(ctx.getSource(),
-                                StringArgumentType.getString(ctx, "id"),
-                                StringArgumentType.getString(ctx, "face"))))))
-
-                // ── givesquare <black|yellow|green> ──────────────────────────────────────
-                .then(CommandManager.literal("givesquare")
-                    .executes(ctx -> usage(ctx.getSource(), "givesquare"))
-                    .then(CommandManager.argument("color", StringArgumentType.word())
-                        .suggests((ctx, builder) -> {
-                            builder.suggest("black"); builder.suggest("yellow"); builder.suggest("green");
-                            return builder.buildFuture();
-                        })
-                        .executes(ctx -> cmdGiveSquare(ctx.getSource(),
-                            StringArgumentType.getString(ctx, "color")))))
-
-                .then(CommandManager.literal("clearallfaces")
-                    .executes(ctx -> usage(ctx.getSource(), "clearallfaces"))
-                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_SUGGESTIONS)
-                        .executes(ctx -> cmdClearAllFaces(ctx.getSource(),
-                            StringArgumentType.getString(ctx, "id")))))
-
-                // ── export ───────────────────────────────────────────────────
-                .then(CommandManager.literal("export")
-                    .executes(ctx -> cmdExport(ctx.getSource()))
-                )
-
-                // ── importfolder ─────────────────────────────────────────────
-                // Reads all PNGs from config/customblocks/import/ on the server.
-                // Filename becomes the block ID (e.g. green_a.png → id=green_a, name=Green A)
-                .then(CommandManager.literal("importfolder")
-                    .executes(ctx -> cmdImportFolder(ctx.getSource()))
-                )
-
-                // ── stop ─────────────────────────────────────────────────────
-                .then(CommandManager.literal("stop")
-                    .executes(ctx -> {
-                        ServerCommandSource src = ctx.getSource();
-                        for (ServerPlayerEntity p : src.getServer().getPlayerManager().getPlayerList())
-                            p.sendMessage(Text.literal("§c[Server] Server is stopping..."));
-                        src.getServer().stop(false);
-                        return 1;
-                    })
-                )
-
-                // ── restart ───────────────────────────────────────────────────
-                .then(CommandManager.literal("restart")
-                    .executes(ctx -> {
-                        ServerCommandSource src = ctx.getSource();
-                        for (ServerPlayerEntity p : src.getServer().getPlayerManager().getPlayerList())
-                            p.sendMessage(Text.literal("§c[Server] Restarting in 3 seconds..."));
-                        Thread t = new Thread(() -> {
-                            try { Thread.sleep(3000); } catch (InterruptedException ignored) {}
-                            src.getServer().stop(false);
-                        }, "CB-Restart");
-                        t.setDaemon(true);
-                        t.start();
-                        return 1;
-                    })
-                )
-
-                // ── reload ───────────────────────────────────────────────────
-                // Re-reads config/customblocks/ and registers any blocks on disk
-                // that aren't currently loaded (e.g. after manual file upload)
-                .then(CommandManager.literal("reload")
-                    .executes(ctx -> {
-                        ServerCommandSource src = ctx.getSource();
-                        File configDir = new File("config/customblocks");
-                        if (!configDir.exists()) {
-                            src.sendError(Text.literal("§c[CustomBlocks] config/customblocks/ not found."));
-                            return 0;
-                        }
-                        File[] folders = configDir.listFiles(File::isDirectory);
-                        if (folders == null || folders.length == 0) {
-                            src.sendMessage(Text.literal("§7[CustomBlocks] No block folders found."));
-                            return 0;
-                        }
-                        int loaded = 0, skipped = 0;
-                        MinecraftServer server = src.getServer();
-                        for (File folder : folders) {
-                            String id = folder.getName().toLowerCase().replaceAll("[^a-z0-9_]", "_");
-                            if (id.isEmpty()) continue;
-                            if (SlotManager.hasId(id)) { skipped++; continue; }
-                            File tex = new File(folder, "texture.png");
-                            if (!tex.exists()) { skipped++; continue; }
-                            if (SlotManager.freeSlots() == 0) {
-                                src.sendError(Text.literal("§c[CustomBlocks] No free slots left!"));
-                                break;
-                            }
-                            try {
-                                byte[] bytes = java.nio.file.Files.readAllBytes(tex.toPath());
-                                String name = id;
-                                File nameTxt = new File(folder, "name.txt");
-                                if (nameTxt.exists()) {
-                                    String n = java.nio.file.Files.readString(nameTxt.toPath()).trim();
-                                    if (!n.isEmpty()) name = n;
-                                }
-                                SlotManager.SlotData d = SlotManager.assign(id, name, bytes);
-                                if (d == null) continue;
-                                CustomBlocksMod.broadcastUpdate(server,
-                                    new SlotUpdatePayload("add", d.index, id, name, bytes,
-                                            d.lightLevel, d.hardness, d.soundType));
-                                loaded++;
-                            } catch (Exception e) {
-                                skipped++;
-                            }
-                        }
-                        if (loaded > 0) SlotManager.saveAll();
-                        src.sendMessage(Text.literal("§a[CustomBlocks] Reload done: §f" + loaded
-                            + " §aloaded, §7" + skipped + " skipped."));
-                        src.sendMessage(Text.literal("§7Slots: " + SlotManager.usedSlots()
-                            + " used, " + SlotManager.freeSlots() + " free."));
-                        return loaded;
-                    })
-                )
-
-                // ── list ─────────────────────────────────────────────────────
-                .then(CommandManager.literal("list")
-                    .executes(ctx -> cmdList(ctx.getSource()))
-                )
-
-                // ── help ─────────────────────────────────────────────────────
-                .then(CommandManager.literal("help")
-                    .executes(ctx -> cmdHelp(ctx.getSource()))
-                )
-
-                // ── colorchanger — give all 3 squares at once or one color ──────────────
-                .then(CommandManager.literal("colorchanger")
-                    .executes(ctx -> cmdColorChangerAll(ctx.getSource()))
-                    .then(CommandManager.argument("color", StringArgumentType.word())
-                        .suggests((ctx, builder) -> {
-                            builder.suggest("black"); builder.suggest("yellow"); builder.suggest("green");
-                            return builder.buildFuture();
-                        })
-                        .executes(ctx -> cmdGiveSquare(ctx.getSource(),
-                            StringArgumentType.getString(ctx, "color")))))
-
-                // ── undo ─────────────────────────────────────────────────────
-                .then(CommandManager.literal("undo")
-                    .executes(ctx -> {
-                        ServerCommandSource src = ctx.getSource();
-                        try {
-                            ServerPlayerEntity player = src.getPlayerOrThrow();
-                            boolean ok = com.customblocks.block.UndoHistory.undo(player);
-                            src.sendMessage(Text.literal(ok
-                                ? "§a[CustomBlocks] Undone!"
-                                : "§7[CustomBlocks] Nothing to undo."));
-                            return ok ? 1 : 0;
-                        } catch (Exception ex) {
-                            src.sendError(Text.literal("§c[CustomBlocks] Only players can undo."));
-                            return 0;
-                        }
-                    })
-                )
-
-                // ── redo ─────────────────────────────────────────────────────
-                .then(CommandManager.literal("redo")
-                    .executes(ctx -> {
-                        ServerCommandSource src = ctx.getSource();
-                        try {
-                            ServerPlayerEntity player = src.getPlayerOrThrow();
-                            boolean ok = com.customblocks.block.UndoHistory.redo(player);
-                            src.sendMessage(Text.literal(ok
-                                ? "§a[CustomBlocks] Redone!"
-                                : "§7[CustomBlocks] Nothing to redo."));
-                            return ok ? 1 : 0;
-                        } catch (Exception ex) {
-                            src.sendError(Text.literal("§c[CustomBlocks] Only players can redo."));
-                            return 0;
-                        }
-                    })
-                )
-
-                // ── bulkdelete — reads config/customblocks/delete_list.txt ───
-                .then(CommandManager.literal("bulkdelete")
-                    .executes(ctx -> {
-                        ServerCommandSource src = ctx.getSource();
-                        File file = new File("config/customblocks/delete_list.txt");
-                        if (!file.exists()) {
-                            src.sendError(Text.literal("§c[CustomBlocks] File not found: config/customblocks/delete_list.txt"));
-                            src.sendMessage(Text.literal("§7Create that file with one block ID per line, then run /cb bulkdelete."));
-                            return 0;
-                        }
-                        try {
-                            java.util.List<String> lines = java.nio.file.Files.readAllLines(file.toPath());
-                            int deleted = 0, skipped = 0;
-                            for (String line : lines) {
-                                String id = line.trim().toLowerCase();
-                                if (id.isEmpty() || id.startsWith("#")) continue;
-                                if (SlotManager.hasId(id)) {
-                                    SlotManager.SlotData d = SlotManager.getById(id);
-                                    CustomBlocksMod.broadcastUpdate(src.getServer(),
-                                        new SlotUpdatePayload("remove", d.index, id, null, null, 0, 0, "stone"));
-                                    SlotManager.remove(id);
-                                    deleted++;
-                                } else {
-                                    skipped++;
-                                }
-                            }
-                            if (deleted > 0) SlotManager.saveAll();
-                            src.sendMessage(Text.literal("§a[CustomBlocks] Bulk delete done: §f"
-                                + deleted + " §adeleted, §7" + skipped + " not found."));
-                            src.sendMessage(Text.literal("§7Slots now: " + SlotManager.usedSlots() + " used, " + SlotManager.freeSlots() + " free."));
-                            return deleted;
-                        } catch (IOException e) {
-                            src.sendError(Text.literal("§c[CustomBlocks] Error reading file: " + e.getMessage()));
-                            return 0;
-                        }
-                    })
-                )
-            ;
-
-            // Register under /customblock
-            dispatcher.register(tree);
-
-            // Register under /cb as a full alias (same tree, different name)
-            dispatcher.register(CommandManager.literal("cb")
-                .requires(src -> src.hasPermissionLevel(2))
-                .redirect(dispatcher.getRoot().getChild("customblock")));
+            var root = build();
+            dispatcher.register(root);
+            dispatcher.register(CommandManager.literal("cb").redirect(
+                    dispatcher.getRoot().getChild("customblock")));
         });
     }
 
-    // ── Implementations ───────────────────────────────────────────────────────
+    private static com.mojang.brigadier.builder.LiteralArgumentBuilder<ServerCommandSource> build() {
+        return CommandManager.literal("customblock")
+            .requires(src -> true)
+            .then(CommandManager.literal("createurl")
+                .then(CommandManager.argument("id", StringArgumentType.word())
+                    .then(CommandManager.argument("name", StringArgumentType.word())
+                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
+                            .executes(ctx -> cmdCreateUrl(ctx.getSource(),
+                                StringArgumentType.getString(ctx,"id"),
+                                StringArgumentType.getString(ctx,"name").replace("_"," "),
+                                StringArgumentType.getString(ctx,"url")))))))
+            .then(CommandManager.literal("delete")
+                .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_IDS)
+                    .executes(ctx -> cmdDelete(ctx.getSource(), StringArgumentType.getString(ctx,"id")))))
+            .then(CommandManager.literal("rename")
+                .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_IDS)
+                    .then(CommandManager.argument("newname", StringArgumentType.greedyString())
+                        .executes(ctx -> cmdRename(ctx.getSource(),
+                            StringArgumentType.getString(ctx,"id"),
+                            StringArgumentType.getString(ctx,"newname").replace("_"," "))))))
+            .then(CommandManager.literal("give")
+                .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_IDS)
+                    .executes(ctx -> cmdGive(ctx.getSource(), StringArgumentType.getString(ctx,"id"), null, 1))
+                    .then(CommandManager.argument("player", EntityArgumentType.player())
+                        .executes(ctx -> cmdGive(ctx.getSource(),
+                            StringArgumentType.getString(ctx,"id"),
+                            EntityArgumentType.getPlayer(ctx,"player"), 1))
+                        .then(CommandManager.argument("count", IntegerArgumentType.integer(1,64))
+                            .executes(ctx -> cmdGive(ctx.getSource(),
+                                StringArgumentType.getString(ctx,"id"),
+                                EntityArgumentType.getPlayer(ctx,"player"),
+                                IntegerArgumentType.getInteger(ctx,"count")))))))
+            .then(CommandManager.literal("glow")
+                .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_IDS)
+                    .then(CommandManager.argument("level", IntegerArgumentType.integer(0,15))
+                        .executes(ctx -> cmdGlow(ctx.getSource(),
+                            StringArgumentType.getString(ctx,"id"),
+                            IntegerArgumentType.getInteger(ctx,"level"))))))
+            .then(CommandManager.literal("hardness")
+                .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_IDS)
+                    .then(CommandManager.argument("level", IntegerArgumentType.integer(1,5))
+                        .executes(ctx -> cmdHardness(ctx.getSource(),
+                            StringArgumentType.getString(ctx,"id"),
+                            IntegerArgumentType.getInteger(ctx,"level"))))))
+            .then(CommandManager.literal("sound")
+                .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_IDS)
+                    .then(CommandManager.argument("type", StringArgumentType.word()).suggests(SOUNDS)
+                        .executes(ctx -> cmdSound(ctx.getSource(),
+                            StringArgumentType.getString(ctx,"id"),
+                            StringArgumentType.getString(ctx,"type"))))))
+            .then(CommandManager.literal("face")
+                .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_IDS)
+                    .then(CommandManager.argument("face", StringArgumentType.word()).suggests(FACES)
+                        .then(CommandManager.argument("url", StringArgumentType.greedyString())
+                            .executes(ctx -> cmdFace(ctx.getSource(),
+                                StringArgumentType.getString(ctx,"id"),
+                                StringArgumentType.getString(ctx,"face"),
+                                StringArgumentType.getString(ctx,"url")))))))
+            .then(CommandManager.literal("animfps")
+                .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_IDS)
+                    .then(CommandManager.argument("fps", IntegerArgumentType.integer(1,20))
+                        .executes(ctx -> cmdAnimFps(ctx.getSource(),
+                            StringArgumentType.getString(ctx,"id"),
+                            IntegerArgumentType.getInteger(ctx,"fps"))))))
+            .then(CommandManager.literal("packurl").executes(ctx -> cmdPackUrl(ctx.getSource())))
+            .then(CommandManager.literal("exportpack")
+                .executes(ctx -> cmdExportPack(ctx.getSource(),"v10"))
+                .then(CommandManager.argument("version", StringArgumentType.word())
+                    .executes(ctx -> cmdExportPack(ctx.getSource(), StringArgumentType.getString(ctx,"version")))))
+            .then(CommandManager.literal("template")
+                .then(CommandManager.argument("templateId", StringArgumentType.word()).suggests(TEMPLATE_IDS)
+                    .then(CommandManager.argument("newId", StringArgumentType.word())
+                        .then(CommandManager.argument("name", StringArgumentType.greedyString())
+                            .executes(ctx -> cmdTemplate(ctx.getSource(),
+                                StringArgumentType.getString(ctx,"templateId"),
+                                StringArgumentType.getString(ctx,"newId"),
+                                StringArgumentType.getString(ctx,"name").replace("_"," ")))))))
+            .then(CommandManager.literal("templates").executes(ctx -> cmdListTemplates(ctx.getSource())))
+            .then(CommandManager.literal("recycle")
+                .executes(ctx -> cmdListRecycle(ctx.getSource()))
+                .then(CommandManager.literal("restore")
+                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(RECYCLE_IDS)
+                        .executes(ctx -> cmdRecycleRestore(ctx.getSource(), StringArgumentType.getString(ctx,"id")))))
+                .then(CommandManager.literal("purge")
+                    .then(CommandManager.argument("id", StringArgumentType.word()).suggests(RECYCLE_IDS)
+                        .executes(ctx -> cmdRecyclePurge(ctx.getSource(), StringArgumentType.getString(ctx,"id")))))
+                .then(CommandManager.literal("clear").executes(ctx -> cmdRecycleClear(ctx.getSource()))))
+            .then(CommandManager.literal("undo").executes(ctx -> cmdUndo(ctx.getSource())))
+            .then(CommandManager.literal("history").executes(ctx -> cmdHistory(ctx.getSource())))
+            .then(CommandManager.literal("list").executes(ctx -> cmdList(ctx.getSource())))
+            .then(CommandManager.literal("info")
+                .then(CommandManager.argument("id", StringArgumentType.word()).suggests(BLOCK_IDS)
+                    .executes(ctx -> cmdInfo(ctx.getSource(), StringArgumentType.getString(ctx,"id")))))
+            .then(CommandManager.literal("browse").executes(ctx -> cmdBrowse(ctx.getSource())))
+            .then(CommandManager.literal("atlas").executes(ctx -> cmdAtlas(ctx.getSource())))
+            .then(CommandManager.literal("reload").executes(ctx -> cmdReload(ctx.getSource())));
+    }
 
-    private static int cmdCreate(ServerCommandSource src, String rawId, String name, String url) {
-        String id = sanitize(rawId);
-        if (id.isEmpty()) { src.sendError(Text.literal("§cInvalid ID.")); return 0; }
-        if (SlotManager.hasId(id)) {
-            src.sendError(Text.literal("§c'" + id + "' already exists.")); return 0;
-        }
-        if (SlotManager.freeSlots() == 0) {
-            src.sendError(Text.literal("§cAll " + SlotManager.MAX_SLOTS + " slots are full!")); return 0;
-        }
-        src.sendMessage(Text.literal("§e[CustomBlocks] Downloading..."));
-        MinecraftServer server = src.getServer();
-        final String fId = id, fName = name;
-        thread(() -> {
+    // ── Command implementations ───────────────────────────────────────────────
+
+    private static int cmdCreateUrl(ServerCommandSource src, String id, String name, String url) {
+        if (!checkEdit(src)) return 0;
+        String cid = id.toLowerCase().replaceAll("[^a-z0-9_]","_");
+        if (SlotManager.hasId(cid)) { src.sendMessage(Text.literal("§c[CB] ID '"+cid+"' already exists.")); return 0; }
+        src.sendMessage(Text.literal("§7[CB] Downloading…"));
+        Thread.ofVirtual().start(() -> {
             try {
-                byte[] bytes = download(url);
-                server.execute(() -> {
-                    SlotManager.SlotData d = SlotManager.assign(fId, fName, bytes);
-                    if (d == null) { src.sendError(Text.literal("§cNo free slots!")); return; }
-                    SlotManager.saveAll();
-                    CustomBlocksMod.broadcastUpdate(server,
-                        new SlotUpdatePayload("add", d.index, fId, fName, bytes,
-                                d.lightLevel, d.hardness, d.soundType));
-                    src.sendMessage(Text.literal("§a[CustomBlocks] '" + fName + "' created! §7(slot " + d.index + ")"));
+                byte[] tex = ImageProcessor.downloadAndProcess(url.trim(), 16);
+                src.getServer().execute(() -> {
+                    SlotManager.SlotData d = SlotManager.assign(cid, name, tex);
+                    if (d == null) { src.sendMessage(Text.literal("§c[CB] No free slots.")); return; }
+                    SlotManager.saveAll(); CustomBlocksMod.regenPack(src.getServer());
+                    CustomBlocksMod.broadcastUpdate(src.getServer(), new SlotUpdatePayload(
+                            "add", d.index, cid, name, tex, d.lightLevel, d.hardness, d.soundType));
+                    src.sendMessage(Text.literal("§a[CB] Created '"+name+"' slot "+d.index+"."));
                 });
             } catch (Exception e) {
-                server.execute(() -> src.sendError(Text.literal("§c[CustomBlocks] Download failed: " + e.getMessage())));
+                src.getServer().execute(() -> src.sendMessage(Text.literal("§c[CB] Error: "+e.getMessage())));
             }
         });
         return 1;
     }
 
     private static int cmdDelete(ServerCommandSource src, String id) {
-        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
-        SlotManager.SlotData d = SlotManager.getById(id);
-        SlotManager.remove(id);
-        SlotManager.saveAll();
-        CustomBlocksMod.broadcastUpdate(src.getServer(),
-            new SlotUpdatePayload("remove", d.index, id, null, null, 0, 0, "stone"));
-        src.sendMessage(Text.literal("§a[CustomBlocks] '" + id + "' deleted."));
+        if (!checkEdit(src)) return 0;
+        if (!SlotManager.hasId(id)) { src.sendMessage(Text.literal("§c[CB] Not found: "+id)); return 0; }
+        SlotManager.delete(id); SlotManager.saveAll(); CustomBlocksMod.regenPack(src.getServer());
+        CustomBlocksMod.broadcastUpdate(src.getServer(), new SlotUpdatePayload("delete",-1,id,null,null,0,0,"stone"));
+        src.sendMessage(Text.literal("§a[CB] Deleted '"+id+"'."));
         return 1;
     }
 
     private static int cmdRename(ServerCommandSource src, String id, String newName) {
-        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
-        SlotManager.SlotData d = SlotManager.getById(id);
-        SlotManager.rename(id, newName);
+        if (!checkEdit(src)) return 0;
+        if (!SlotManager.rename(id, newName)) { src.sendMessage(Text.literal("§c[CB] Not found: "+id)); return 0; }
         SlotManager.saveAll();
-        CustomBlocksMod.broadcastUpdate(src.getServer(),
-            new SlotUpdatePayload("rename", d.index, id, newName, null, 0, 0, "stone"));
-        src.sendMessage(Text.literal("§a[CustomBlocks] Renamed to '" + newName + "'."));
+        SlotManager.SlotData d = SlotManager.getById(id);
+        CustomBlocksMod.broadcastUpdate(src.getServer(), new SlotUpdatePayload("rename",d.index,id,newName,null,d.lightLevel,d.hardness,d.soundType));
+        src.sendMessage(Text.literal("§a[CB] Renamed to '"+newName+"'."));
         return 1;
     }
 
-    private static int cmdRetexture(ServerCommandSource src, String id, String url) {
-        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
-        src.sendMessage(Text.literal("§e[CustomBlocks] Downloading texture..."));
-        MinecraftServer server = src.getServer();
-        final String fId = id;
-        thread(() -> {
+    private static int cmdGive(ServerCommandSource src, String id, ServerPlayerEntity target, int count) {
+        ServerPlayerEntity p;
+        try { p = target != null ? target : src.getPlayerOrThrow(); }
+        catch (Exception e) { src.sendMessage(Text.literal("§c[CB] Specify a player.")); return 0; }
+        SlotManager.SlotData d = SlotManager.getById(id);
+        if (d == null) { src.sendMessage(Text.literal("§c[CB] Not found: "+id)); return 0; }
+        p.getInventory().insertStack(new ItemStack(CustomBlocksMod.SLOT_ITEMS[d.index], Math.min(count,64)));
+        src.sendMessage(Text.literal("§a[CB] Gave "+count+"x '"+d.displayName+"'."));
+        return 1;
+    }
+
+    private static int cmdGlow(ServerCommandSource src, String id, int level) {
+        if (!checkEdit(src)) return 0;
+        if (!SlotManager.setLight(id, level)) { src.sendMessage(Text.literal("§c[CB] Not found: "+id)); return 0; }
+        SlotManager.saveAll();
+        SlotManager.SlotData d = SlotManager.getById(id);
+        CustomBlocksMod.broadcastUpdate(src.getServer(), new SlotUpdatePayload("update",d.index,id,null,null,level,d.hardness,d.soundType));
+        src.sendMessage(Text.literal("§a[CB] Glow="+level+" on '"+id+"'."));
+        return 1;
+    }
+
+    private static int cmdHardness(ServerCommandSource src, String id, int level) {
+        if (!checkEdit(src)) return 0;
+        float h = switch(level){ case 1->0.3f; case 2->1.5f; case 3->3.0f; case 4->5.0f; default->-1f; };
+        if (!SlotManager.setHardness(id,h)) { src.sendMessage(Text.literal("§c[CB] Not found: "+id)); return 0; }
+        SlotManager.saveAll(); src.sendMessage(Text.literal("§a[CB] Hardness="+level+" on '"+id+"'."));
+        return 1;
+    }
+
+    private static int cmdSound(ServerCommandSource src, String id, String type) {
+        if (!checkEdit(src)) return 0;
+        if (!SlotManager.setSound(id,type)) { src.sendMessage(Text.literal("§c[CB] Not found: "+id)); return 0; }
+        SlotManager.saveAll(); src.sendMessage(Text.literal("§a[CB] Sound='"+type+"' on '"+id+"'."));
+        return 1;
+    }
+
+    private static int cmdFace(ServerCommandSource src, String id, String face, String url) {
+        if (!checkEdit(src)) return 0;
+        if (!SlotManager.FACE_KEYS.contains(face)) { src.sendMessage(Text.literal("§c[CB] Bad face. Valid: "+SlotManager.FACE_KEYS)); return 0; }
+        src.sendMessage(Text.literal("§7[CB] Downloading face…"));
+        Thread.ofVirtual().start(() -> {
             try {
-                byte[] bytes = download(url);
-                server.execute(() -> {
-                    SlotManager.SlotData d = SlotManager.getById(fId);
-                    if (d == null) { src.sendError(notFound(fId)); return; }
-                    SlotManager.updateTexture(fId, bytes);
-                    SlotManager.saveAll();
-                    CustomBlocksMod.broadcastUpdate(server,
-                        new SlotUpdatePayload("retexture", d.index, fId, null, bytes,
-                                d.lightLevel, d.hardness, d.soundType));
-                    src.sendMessage(Text.literal("§a[CustomBlocks] Texture updated for '" + fId + "'."));
+                byte[] tex = ImageProcessor.downloadAndProcess(url.trim(), 16);
+                src.getServer().execute(() -> {
+                    if (!SlotManager.setFaceTexture(id, face, tex)) { src.sendMessage(Text.literal("§c[CB] Not found: "+id)); return; }
+                    SlotManager.saveAll(); CustomBlocksMod.regenPack(src.getServer());
+                    SlotManager.SlotData d = SlotManager.getById(id);
+                    CustomBlocksMod.broadcastUpdate(src.getServer(), new SlotUpdatePayload("update",d.index,id,null,null,d.lightLevel,d.hardness,d.soundType));
+                    src.sendMessage(Text.literal("§a[CB] Face '"+face+"' set on '"+id+"'."));
                 });
-            } catch (Exception e) {
-                server.execute(() -> src.sendError(Text.literal("§c[CustomBlocks] Download failed: " + e.getMessage())));
-            }
+            } catch (Exception e) { src.getServer().execute(() -> src.sendMessage(Text.literal("§c[CB] "+e.getMessage()))); }
         });
         return 1;
     }
 
-    private static int cmdGive(ServerCommandSource src, String id, int amount,
-                                Collection<ServerPlayerEntity> targets) {
+    private static int cmdAnimFps(ServerCommandSource src, String id, int fps) {
+        if (!checkEdit(src)) return 0;
         SlotManager.SlotData d = SlotManager.getById(id);
-        if (d == null) { src.sendError(notFound(id)); return 0; }
-        SlotBlock.SlotItem item = CustomBlocksMod.SLOT_ITEMS[d.index];
-        ItemStack stack = new ItemStack(item, Math.max(1, Math.min(64, amount)));
-        if (targets == null || targets.isEmpty()) {
-            try {
-                ServerPlayerEntity self = src.getPlayerOrThrow();
-                self.getInventory().insertStack(stack.copy());
-                src.sendMessage(Text.literal("§a[CustomBlocks] Given " + amount + "x '" + d.displayName + "' to you."));
-            } catch (Exception ex) {
-                src.sendError(Text.literal("§cRun as a player or specify a target."));
-            }
-        } else {
-            for (ServerPlayerEntity p : targets) {
-                p.getInventory().insertStack(stack.copy());
-                p.sendMessage(Text.literal("§a[CustomBlocks] You received " + amount + "x '" + d.displayName + "'."));
-            }
-            src.sendMessage(Text.literal("§a[CustomBlocks] Gave " + amount + "x to " + targets.size() + " player(s)."));
-        }
+        if (d == null) { src.sendMessage(Text.literal("§c[CB] Not found: "+id)); return 0; }
+        d.animFps = fps; SlotManager.saveAll(); CustomBlocksMod.regenPack(src.getServer());
+        src.sendMessage(Text.literal("§a[CB] AnimFPS="+fps+" on '"+id+"'."));
         return 1;
     }
 
-    private static int cmdSetGlow(ServerCommandSource src, String id, int level) {
-        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
-        SlotManager.SlotData d = SlotManager.getById(id);
-        SlotManager.setLightLevel(id, level);
-        SlotManager.saveAll();
-        CustomBlocksMod.broadcastUpdate(src.getServer(),
-            new SlotUpdatePayload("setprop", d.index, id, null, null,
-                    level, d.hardness, d.soundType));
-        src.sendMessage(Text.literal("§a[CustomBlocks] '" + id + "' glow set to " + level + "."));
+    private static int cmdPackUrl(ServerCommandSource src) {
+        String url = PackHttpServer.getUrl();
+        src.sendMessage(Text.literal("§a[CB] Pack URL: §f"+url));
         return 1;
     }
 
-    private static int cmdSetHardness(ServerCommandSource src, String id, float val) {
-        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
-        SlotManager.SlotData d = SlotManager.getById(id);
-        SlotManager.setHardness(id, val);
-        SlotManager.saveAll();
-        String label = val < 0 ? "Unbreakable" : val == 0 ? "Instant break" : String.valueOf(val);
-        CustomBlocksMod.broadcastUpdate(src.getServer(),
-            new SlotUpdatePayload("setprop", d.index, id, null, null,
-                    d.lightLevel, val, d.soundType));
-        src.sendMessage(Text.literal("§a[CustomBlocks] '" + id + "' hardness: " + label + "."));
-        return 1;
-    }
-
-    private static int cmdSetSound(ServerCommandSource src, String id, String type) {
-        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
-        String[] valid = {"stone","wood","grass","metal","glass","sand","wool"};
-        boolean ok = false;
-        for (String v : valid) if (v.equals(type)) { ok = true; break; }
-        if (!ok) {
-            src.sendError(Text.literal("§cValid sounds: stone, wood, grass, metal, glass, sand, wool"));
-            return 0;
-        }
-        SlotManager.SlotData d = SlotManager.getById(id);
-        SlotManager.setSoundType(id, type);
-        SlotManager.saveAll();
-        CustomBlocksMod.broadcastUpdate(src.getServer(),
-            new SlotUpdatePayload("setprop", d.index, id, null, null,
-                    d.lightLevel, d.hardness, type));
-        src.sendMessage(Text.literal("§a[CustomBlocks] '" + id + "' sound: " + type + "."));
-        return 1;
-    }
-
-    private static int cmdSetTabIcon(ServerCommandSource src, String url) {
-        src.sendMessage(Text.literal("§e[CustomBlocks] Downloading tab icon..."));
-        MinecraftServer server = src.getServer();
-        thread(() -> {
-            try {
-                byte[] bytes = download(url);
-                server.execute(() -> {
-                    // Assign or update the reserved "tab_icon" slot
-                    SlotManager.setTabIconTexture(bytes);
-                    if (!SlotManager.hasId("tab_icon")) {
-                        SlotManager.assign("tab_icon", "Tab Icon", bytes);
-                    } else {
-                        SlotManager.updateTexture("tab_icon", bytes);
-                    }
-                    SlotManager.saveAll();
-                    // Broadcast as both tabicon (for the texture) and add (for the slot)
-                    SlotManager.SlotData d = SlotManager.getById("tab_icon");
-                    if (d != null) {
-                        CustomBlocksMod.broadcastUpdate(server,
-                            new SlotUpdatePayload("add", d.index, "tab_icon", "Tab Icon",
-                                bytes, 0, 1.5f, "stone"));
-                    }
-                    CustomBlocksMod.broadcastUpdate(server,
-                        new SlotUpdatePayload("tabicon", -1, null, null, bytes, 0, 0, "stone"));
-                    src.sendMessage(Text.literal("§a[CustomBlocks] Tab icon updated!"));
-                });
-            } catch (Exception e) {
-                server.execute(() -> src.sendError(Text.literal("§c[CustomBlocks] Download failed: " + e.getMessage())));
-            }
-        });
-        return 1;
-    }
-
-    private static int cmdImportFolder(ServerCommandSource src) {
-        File importDir = new File("config/customblocks/import");
-        if (!importDir.exists()) {
-            importDir.mkdirs();
-            src.sendMessage(Text.literal("\u00a7e[CustomBlocks] Created import folder: \u00a7fconfig/customblocks/import/"));
-            src.sendMessage(Text.literal("\u00a77Drop PNG files in there, then run /customblock importfolder again."));
-            src.sendMessage(Text.literal("\u00a77Filename becomes block ID (e.g. green_a.png = id green_a, name Green A)"));
-            return 1;
-        }
-
-        File[] allPngs = importDir.listFiles((dir, name) -> name.toLowerCase().endsWith(".png"));
-        if (allPngs == null || allPngs.length == 0) {
-            src.sendMessage(Text.literal("\u00a7c[CustomBlocks] No PNG files found in config/customblocks/import/"));
-            return 0;
-        }
-
-        java.util.Arrays.sort(allPngs, java.util.Comparator.comparing(File::getName));
-
-        int free = SlotManager.freeSlots();
-        if (free == 0) { src.sendError(Text.literal("\u00a7cAll " + SlotManager.MAX_SLOTS + " slots are full!")); return 0; }
-
-        src.sendMessage(Text.literal("\u00a7e[CustomBlocks] Found " + allPngs.length + " PNG(s), " + free + " slots free. Importing..."));
-
-        MinecraftServer server = src.getServer();
-
-        thread(() -> {
-            java.util.List<String[]> toAdd      = new java.util.ArrayList<>(); // [id, name, (bytes stored separately)]
-            java.util.List<byte[]>   toAddBytes = new java.util.ArrayList<>();
-            java.util.List<String>   skipped    = new java.util.ArrayList<>();
-            java.util.List<String>   failed     = new java.util.ArrayList<>();
-
-            for (File png : allPngs) {
-                String rawName     = png.getName().replaceAll("(?i)\\.(png|jpg|jpeg)$", "");
-                String id          = rawName.toLowerCase().replaceAll("[^a-z0-9_]", "_");
-                String displayName = java.util.Arrays.stream(rawName.replace("_", " ").split(" "))
-                    .map(w -> w.isEmpty() ? w : Character.toUpperCase(w.charAt(0)) + w.substring(1).toLowerCase())
-                    .collect(java.util.stream.Collectors.joining(" "));
-
-                if (SlotManager.hasId(id)) { skipped.add(id); continue; }
-                if (toAdd.size() >= free)  { failed.add(id + "(no free slot)"); continue; }
-
-                try {
-                    byte[] bytes = java.nio.file.Files.readAllBytes(png.toPath());
-                    toAdd.add(new String[]{id, displayName});
-                    toAddBytes.add(bytes);
-                } catch (Exception e) {
-                    failed.add(id + "(read error)");
-                }
-            }
-
-            server.execute(() -> {
-                int created = 0;
-                for (int i = 0; i < toAdd.size(); i++) {
-                    String id   = toAdd.get(i)[0];
-                    String name = toAdd.get(i)[1];
-                    byte[] b    = toAddBytes.get(i);
-                    SlotManager.SlotData d = SlotManager.assign(id, name, b);
-                    if (d == null) { failed.add(id + "(slot full)"); continue; }
-                    // Save texture.png and name.txt to config folder so server can send on join
-                    try {
-                        File blockFolder = new File("config/customblocks/" + id);
-                        blockFolder.mkdirs();
-                        java.nio.file.Files.write(new File(blockFolder, "texture.png").toPath(), b);
-                        java.nio.file.Files.writeString(new File(blockFolder, "name.txt").toPath(), name);
-                    } catch (Exception ignored) {}
-                    CustomBlocksMod.broadcastUpdate(server,
-                        new SlotUpdatePayload("add", d.index, id, name, b,
-                                d.lightLevel, d.hardness, d.soundType));
-                    created++;
-                }
-                if (created > 0) SlotManager.saveAll();
-
-                StringBuilder msg = new StringBuilder("\u00a7a[CustomBlocks] Done! \u00a7f" + created + " created");
-                if (!skipped.isEmpty()) msg.append("\u00a77, ").append(skipped.size()).append(" skipped");
-                if (!failed.isEmpty())  msg.append("\u00a7c, ").append(failed.size()).append(" failed");
-                src.sendMessage(Text.literal(msg.toString()));
-                src.sendMessage(Text.literal("\u00a77Slots: " + SlotManager.usedSlots() + " / " + SlotManager.MAX_SLOTS + " used"));
-                if (!failed.isEmpty())
-                    src.sendMessage(Text.literal("\u00a7cFailed: " + String.join(", ", failed)));
-            });
-        });
-        return 1;
-    }
-
-    private static int cmdExport(ServerCommandSource src) {
-        File dir = new File("config/customblocks");
-        dir.mkdirs();
-        File out = new File(dir, "export.json");
+    private static int cmdExportPack(ServerCommandSource src, String version) {
+        if (!checkAdmin(src)) return 0;
         try {
-            com.google.gson.JsonObject root = new com.google.gson.JsonObject();
-            com.google.gson.JsonArray arr = new com.google.gson.JsonArray();
-            for (SlotManager.SlotData d : SlotManager.allSlots()) {
-                com.google.gson.JsonObject e = new com.google.gson.JsonObject();
-                e.addProperty("id",          d.customId);
-                e.addProperty("displayName", d.displayName);
-                e.addProperty("slot",        d.index);
-                e.addProperty("lightLevel",  d.lightLevel);
-                e.addProperty("hardness",    d.hardness);
-                e.addProperty("soundType",   d.soundType);
-                arr.add(e);
-            }
-            root.add("blocks", arr);
-            root.addProperty("totalBlocks", SlotManager.usedSlots());
-            root.addProperty("freeSlots",   SlotManager.freeSlots());
-            try (java.io.FileWriter fw = new java.io.FileWriter(out, java.nio.charset.StandardCharsets.UTF_8)) {
-                new com.google.gson.GsonBuilder().setPrettyPrinting().create().toJson(root, fw);
-            }
-            src.sendMessage(Text.literal("§a[CustomBlocks] Exported " + SlotManager.usedSlots() + " blocks to config/customblocks/export.json"));
-        } catch (Exception e) {
-            src.sendError(Text.literal("§cExport failed: " + e.getMessage()));
-        }
+            ResourcePackExporter.exportCurrentPackZip(new File("config/customblocks"), version);
+            src.sendMessage(Text.literal("§a[CB] Exported pack-"+version+".zip → HTTP: "+PackHttpServer.getUrl()));
+        } catch (Exception e) { src.sendMessage(Text.literal("§c[CB] "+e.getMessage())); }
+        return 1;
+    }
+
+    private static int cmdTemplate(ServerCommandSource src, String tid, String newId, String name) {
+        if (!checkEdit(src)) return 0;
+        String cid = newId.toLowerCase().replaceAll("[^a-z0-9_]","_");
+        if (SlotManager.hasId(cid)) { src.sendMessage(Text.literal("§c[CB] ID '"+cid+"' already exists.")); return 0; }
+        SlotManager.SlotData d = TemplateManager.apply(tid, cid, name);
+        if (d == null) { src.sendMessage(Text.literal("§c[CB] Unknown template or no slots: "+tid)); return 0; }
+        SlotManager.saveAll(); CustomBlocksMod.regenPack(src.getServer());
+        CustomBlocksMod.broadcastUpdate(src.getServer(), new SlotUpdatePayload("add",d.index,cid,name,d.texture,d.lightLevel,d.hardness,d.soundType));
+        src.sendMessage(Text.literal("§a[CB] Created '"+name+"' from template '"+tid+"'."));
+        return 1;
+    }
+
+    private static int cmdListTemplates(ServerCommandSource src) {
+        src.sendMessage(Text.literal("§6[CB] Templates ("+TemplateManager.allTemplates().size()+"):"));
+        TemplateManager.allTemplates().forEach(t -> src.sendMessage(Text.literal(
+                "§7  §e"+t.id()+" §7— "+t.description()+" (glow:"+t.lightLevel()+" snd:"+t.soundType()+")")));
+        return 1;
+    }
+
+    private static int cmdListRecycle(ServerCommandSource src) {
+        var bin = SlotManager.getRecycleBin();
+        if (bin.isEmpty()) { src.sendMessage(Text.literal("§7[CB] Recycle bin empty.")); return 1; }
+        src.sendMessage(Text.literal("§6[CB] Recycle ("+bin.size()+"/"+SlotManager.RECYCLE_SIZE+"):"));
+        bin.forEach(d -> src.sendMessage(Text.literal("§7  "+d.customId+" — "+d.displayName)));
+        return 1;
+    }
+
+    private static int cmdRecycleRestore(ServerCommandSource src, String id) {
+        if (!checkEdit(src)) return 0;
+        SlotManager.SlotData d = SlotManager.restoreFromRecycle(id);
+        if (d == null) { src.sendMessage(Text.literal("§c[CB] Cannot restore '"+id+"'.")); return 0; }
+        SlotManager.saveAll(); CustomBlocksMod.regenPack(src.getServer());
+        CustomBlocksMod.broadcastUpdate(src.getServer(), new SlotUpdatePayload("add",d.index,d.customId,d.displayName,d.texture,d.lightLevel,d.hardness,d.soundType));
+        src.sendMessage(Text.literal("§a[CB] Restored '"+d.displayName+"'."));
+        return 1;
+    }
+
+    private static int cmdRecyclePurge(ServerCommandSource src, String id) {
+        if (!checkAdmin(src)) return 0;
+        SlotManager.purgeRecycle(id); src.sendMessage(Text.literal("§a[CB] Purged '"+id+"'."));
+        return 1;
+    }
+
+    private static int cmdRecycleClear(ServerCommandSource src) {
+        if (!checkAdmin(src)) return 0;
+        SlotManager.clearRecycle(); src.sendMessage(Text.literal("§a[CB] Recycle bin cleared."));
+        return 1;
+    }
+
+    private static int cmdUndo(ServerCommandSource src) {
+        if (!checkEdit(src)) return 0;
+        if (!SlotManager.undo()) { src.sendMessage(Text.literal("§c[CB] Nothing to undo.")); return 0; }
+        SlotManager.saveAll(); CustomBlocksMod.regenPack(src.getServer());
+        List<FullSyncPayload.SlotEntry> meta = new ArrayList<>();
+        SlotManager.allSlots().forEach(d -> meta.add(new FullSyncPayload.SlotEntry(d.index,d.customId,d.displayName,null,d.lightLevel,d.hardness,d.soundType)));
+        FullSyncPayload syncPkt = new FullSyncPayload(meta, SlotManager.getTabIconTexture());
+        src.getServer().getPlayerManager().getPlayerList().forEach(p -> ServerPlayNetworking.send(p, syncPkt));
+        src.sendMessage(Text.literal("§a[CB] Undone. "+SlotManager.undoDepth()+" step(s) left."));
+        return 1;
+    }
+
+    private static int cmdHistory(ServerCommandSource src) {
+        src.sendMessage(Text.literal("§6[CB] Undo: "+SlotManager.undoDepth()+"/"+SlotManager.UNDO_DEPTH+" steps."));
         return 1;
     }
 
     private static int cmdList(ServerCommandSource src) {
-        if (SlotManager.usedSlots() == 0) {
-            src.sendMessage(Text.literal("§7[CustomBlocks] No blocks. " + SlotManager.freeSlots() + " slots free."));
-            return 1;
-        }
-        src.sendMessage(Text.literal("§e[CustomBlocks] §f" + SlotManager.usedSlots() + " block(s) | §7" + SlotManager.freeSlots() + " free:"));
-        for (SlotManager.SlotData d : SlotManager.allSlots()) {
-            String glow  = d.lightLevel > 0 ? " §6*" + d.lightLevel : "";
-            String hard  = d.hardness < 0 ? " §c∞" : "";
-            src.sendMessage(Text.literal("  §f" + d.customId + " §7→ '" + d.displayName + "'" + glow + hard + " §8(slot " + d.index + ")"));
-        }
+        src.sendMessage(Text.literal("§6[CB] Blocks ("+SlotManager.usedSlots()+"/"+SlotManager.MAX_SLOTS+"):"));
+        SlotManager.allSlots().forEach(d -> src.sendMessage(Text.literal(
+                "§7  ["+d.index+"] §f"+d.customId+" §7— "+d.displayName+
+                (d.lightLevel>0?" §e✦"+d.lightLevel:"")+
+                (d.isAnimated()?" §b♦anim":"")+
+                (d.hasRandom()?" §d±rnd":""))));
         return 1;
     }
 
-    private static int cmdHelp(ServerCommandSource src) {
-        src.sendMessage(Text.literal("§e══ Custom Blocks Help ══"));
-        src.sendMessage(Text.literal("§aPress §fB §ato open the visual GUI!"));
-        src.sendMessage(Text.literal("§f/customblock createurl <id> <n> <url>  §7create from image"));
-        src.sendMessage(Text.literal("§f/customblock delete <id>  §7delete a block"));
-        src.sendMessage(Text.literal("§f/customblock rename <id> <newname>  §7rename"));
-        src.sendMessage(Text.literal("§f/customblock retexture <id> <url>  §7change texture"));
-        src.sendMessage(Text.literal("§f/customblock give <id> [amount] [player]  §7give block (amount 1-64)"));
-        src.sendMessage(Text.literal("§f/customblock setglow <id> <0-15>  §7light emission"));
-        src.sendMessage(Text.literal("§f/customblock sethardness <id> <val>  §7mining speed (−1=unbreakable)"));
-        src.sendMessage(Text.literal("§f/customblock setsound <id> <stone|wood|metal|glass|grass|sand>"));
-        src.sendMessage(Text.literal("§f/customblock settabicon <url>  §7set tab icon"));
-        src.sendMessage(Text.literal("§f/customblock set[top|bottom|north|south|east|west]face <id> <url>  §7set a face"));
-        src.sendMessage(Text.literal("§f/customblock givesquare <black|yellow|green>  §7get a color-swap square item"));
-        src.sendMessage(Text.literal("§f/customblock colorchanger [color]  §7give all 3 squares (or one color)"));
-        src.sendMessage(Text.literal("§f/customblock reload  §7load new blocks from config/customblocks/ without restart"));
-        src.sendMessage(Text.literal("§f/customblock undo  §7undo last color-square swap"));
-        src.sendMessage(Text.literal("§f/customblock redo  §7redo last undone swap"));
-        src.sendMessage(Text.literal("§f/customblock bulkdelete  §7delete all IDs listed in config/customblocks/delete_list.txt"));
-        src.sendMessage(Text.literal("§7Tip: use §f/cb§7 as a short alias for §f/customblock§7!"));
-        src.sendMessage(Text.literal("§f/customblock clearface <id> <face>  §7revert one face to default"));
-        src.sendMessage(Text.literal("§f/customblock clearallfaces <id>  §7revert all faces to default"));
-        src.sendMessage(Text.literal("§f/customblock importfolder  §7bulk-import PNGs from config/customblocks/import/"));
-        src.sendMessage(Text.literal("§f/customblock export  §7export block list to config/customblocks/export.json"));
-        src.sendMessage(Text.literal("§f/customblock list  §7list all blocks"));
-        src.sendMessage(Text.literal("§7No restarts needed for any command!"));
+    private static int cmdInfo(ServerCommandSource src, String id) {
+        SlotManager.SlotData d = SlotManager.getById(id);
+        if (d==null) { src.sendMessage(Text.literal("§c[CB] Not found: "+id)); return 0; }
+        src.sendMessage(Text.literal("§6[CB] "+d.customId+" | §f"+d.displayName+" | slot "+d.index));
+        src.sendMessage(Text.literal("  glow="+d.lightLevel+" hard="+d.hardness+" snd="+d.soundType+" unbr="+d.unbreakable));
+        src.sendMessage(Text.literal("  faces="+d.faceTextures.keySet()+" anim="+d.animFrames.size()+"@"+d.animFps+"fps rand="+d.randomVariants.size()));
         return 1;
     }
 
+    private static int cmdBrowse(ServerCommandSource src) {
+        src.sendMessage(Text.literal("§a[CB] Press §fF6§a in-game to open the Custom Blocks GUI."));
+        return 1;
+    }
 
-    private static int cmdSetFace(ServerCommandSource src, String id, String face, String url) {
-        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
-        src.sendMessage(Text.literal("§e[CustomBlocks] Downloading " + face + " face texture..."));
-        MinecraftServer server = src.getServer();
-        thread(() -> {
-            try {
-                byte[] bytes = download(url);
-                server.execute(() -> {
-                    SlotManager.SlotData d = SlotManager.getById(id);
-                    if (d == null) { src.sendError(Text.literal("§c[CustomBlocks] '" + id + "' was deleted before texture arrived.")); return; }
-                    SlotManager.setFaceTexture(id, face, bytes);
-                    SlotManager.saveAll();
-                    src.sendMessage(Text.literal("§a[CustomBlocks] " + face + " face set on '" + id + "'."));
-                });
-            } catch (Exception e) {
-                server.execute(() -> src.sendError(Text.literal("§c[CustomBlocks] Download failed: " + e.getMessage())));
+    private static int cmdAtlas(ServerCommandSource src) {
+        if (!checkAdmin(src)) return 0;
+        CustomBlocksMod.regenPack(src.getServer());
+        src.sendMessage(Text.literal("§a[CB] Resource pack rebuilt."));
+        return 1;
+    }
+
+    private static int cmdReload(ServerCommandSource src) {
+        if (!checkAdmin(src)) return 0;
+        PermissionManager.load(); TemplateManager.load();
+        src.sendMessage(Text.literal("§a[CB] Reloaded permissions + templates."));
+        return 1;
+    }
+
+    private static boolean checkEdit(ServerCommandSource src) {
+        try {
+            if (!PermissionManager.canEdit(src.getPlayerOrThrow())) {
+                src.sendMessage(Text.literal("§c[CB] Need 'edit' permission.")); return false;
             }
-        });
-        return 1;
+            return true;
+        } catch (Exception e) { return src.hasPermissionLevel(2); }
     }
 
-    private static int cmdClearFace(ServerCommandSource src, String id, String face) {
-        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
-        if (!SlotManager.FACE_KEYS.contains(face)) {
-            src.sendError(Text.literal("§cValid faces: top bottom north south east west")); return 0;
-        }
-        SlotManager.SlotData d = SlotManager.getById(id); // fetch BEFORE mutation
-        if (d == null) { src.sendError(notFound(id)); return 0; }
-        SlotManager.clearFaceTexture(id, face);
-        SlotManager.saveAll();
-        src.sendMessage(Text.literal("§a[CustomBlocks] " + face + " face cleared on '" + id + "' (reverted to default)."));
-        return 1;
-    }
-
-    private static int cmdClearAllFaces(ServerCommandSource src, String id) {
-        if (!SlotManager.hasId(id)) { src.sendError(notFound(id)); return 0; }
-        SlotManager.SlotData d = SlotManager.getById(id); // fetch BEFORE mutation
-        if (d == null) { src.sendError(notFound(id)); return 0; }
-        SlotManager.clearAllFaces(id);
-        SlotManager.saveAll();
-        src.sendMessage(Text.literal("§a[CustomBlocks] All face overrides cleared on '" + id + "'."));
-        return 1;
-    }
-
-    private static int cmdColorChangerAll(ServerCommandSource src) {
-        // Give all 3 color squares silently, then send one combined message
-        int given = 0;
-        for (String col : new String[]{"black", "yellow", "green"}) {
-            given += cmdGiveSquareSilent(src, col);
-        }
-        if (given > 0)
-            src.sendMessage(Text.literal("§a[CustomBlocks] Given all 3 color squares! Right-click any Custom Block to swap its color."));
-        else
-            src.sendError(Text.literal("§cCould not give squares. Run as a player."));
-        return given > 0 ? 1 : 0;
-    }
-
-    /** Like cmdGiveSquare but without the success message — used by colorchanger. */
-    private static int cmdGiveSquareSilent(ServerCommandSource src, String color) {
-        String normalized = color.toLowerCase().trim();
-        net.minecraft.util.Identifier sqId =
-            net.minecraft.util.Identifier.of(CustomBlocksMod.MOD_ID, normalized + "_square");
-        net.minecraft.item.Item sqItem = net.minecraft.registry.Registries.ITEM.get(sqId);
-        if (sqItem == null || sqItem == net.minecraft.item.Items.AIR) return 0;
+    private static boolean checkAdmin(ServerCommandSource src) {
         try {
-            ServerPlayerEntity self = src.getPlayerOrThrow();
-            self.getInventory().insertStack(new ItemStack(sqItem, 1));
-            return 1;
-        } catch (Exception ex) { return 0; }
-    }
-
-    private static int cmdGiveSquare(ServerCommandSource src, String color) {
-        String normalized = color.toLowerCase().trim();
-        if (!normalized.equals("black") && !normalized.equals("yellow") && !normalized.equals("green")) {
-            src.sendError(Text.literal("§cValid colors: black, yellow, green")); return 0;
-        }
-        net.minecraft.util.Identifier sqId =
-            net.minecraft.util.Identifier.of(CustomBlocksMod.MOD_ID, normalized + "_square");
-        net.minecraft.item.Item sqItem = net.minecraft.registry.Registries.ITEM.get(sqId);
-        if (sqItem == null || sqItem == net.minecraft.item.Items.AIR) {
-            src.sendError(Text.literal("§cSquare item not found — is the mod loaded?")); return 0;
-        }
-        try {
-            ServerPlayerEntity self = src.getPlayerOrThrow();
-            self.getInventory().insertStack(new ItemStack(sqItem, 1));
-            String label = Character.toUpperCase(normalized.charAt(0)) + normalized.substring(1);
-            src.sendMessage(Text.literal("§a[CustomBlocks] Given " + label + " Square. Right-click a Custom Block to swap color!"));
-        } catch (Exception ex) {
-            src.sendError(Text.literal("§cRun as a player.")); return 0;
-        }
-        return 1;
-    }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
-
-    private static int usage(ServerCommandSource src, String cmd) {
-        src.sendError(Text.literal(switch (cmd) {
-            case "delete"      -> "§cUsage: /customblock delete <id>";
-            case "rename"      -> "§cUsage: /customblock rename <id> <newname>";
-            case "retexture"   -> "§cUsage: /customblock retexture <id> <url>";
-            case "give"        -> "§cUsage: /customblock give <id> [amount 1-64] [player]";
-            case "setglow"     -> "§cUsage: /customblock setglow <id> <0-15>";
-            case "sethardness" -> "§cUsage: /customblock sethardness <id> <-1 to 50>  (-1=unbreakable)";
-            case "setsound"    -> "§cUsage: /customblock setsound <id> <stone|wood|grass|metal|glass|sand|wool>";
-            case "settabicon"  -> "§cUsage: /customblock settabicon <url>";
-            case "clearface"   -> "§cUsage: /customblock clearface <id> <top|bottom|north|south|east|west>";
-            case "givesquare"  -> "§cUsage: /customblock givesquare <black|yellow|green>";
-            case "clearallfaces"-> "§cUsage: /customblock clearallfaces <id>";
-            default -> "§cUsage: /customblock help";
-        }));
-        return 0;
-    }
-
-    private static Text notFound(String id) {
-        return Text.literal("§c'" + id + "' not found. Use /customblock list");
-    }
-
-    private static String sanitize(String id) {
-        return id.toLowerCase().replaceAll("[^a-z0-9_]", "_");
-    }
-
-    private static final java.net.http.HttpClient HTTP_CLIENT =
-            java.net.http.HttpClient.newBuilder()
-                    .connectTimeout(Duration.ofSeconds(10))
-                    .build();
-
-    private static byte[] download(String url) throws IOException, InterruptedException {
-        HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .header("User-Agent", "CustomBlocksMod/1.0")
-                .timeout(Duration.ofSeconds(15)).build();
-        HttpResponse<byte[]> res = HTTP_CLIENT.send(req, HttpResponse.BodyHandlers.ofByteArray());
-        if (res.statusCode() != 200)
-            throw new IOException("HTTP " + res.statusCode());
-        byte[] body = res.body();
-        if (body.length > 10_485_760)
-            throw new IOException("Image too large (max 10MB, got " + (body.length / 1024) + "KB)");
-        return body;
-    }
-
-    private static void thread(Runnable r) {
-        Thread t = new Thread(r, "CB-Download");
-        t.setDaemon(true);
-        t.start();
+            if (!PermissionManager.isAdmin(src.getPlayerOrThrow())) {
+                src.sendMessage(Text.literal("§c[CB] Need 'admin' permission.")); return false;
+            }
+            return true;
+        } catch (Exception e) { return src.hasPermissionLevel(2); }
     }
 }

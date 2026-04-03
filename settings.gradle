@@ -4,4 +4,4 @@ pluginManagement {
         gradlePluginPortal()
     }
 }
-rootProject.name = "customblocks"
+rootProject.name = 'Custom-Blocks-Ultimate-v10'

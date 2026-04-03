@@ -2,26 +2,49 @@ plugins {
     id 'fabric-loom' version '1.7.4'
 }
 
-version = '1.0.1'
+version = '10.0.0'
 group = 'com.customblocks'
 
 base {
-    archivesName = 'customblocks'
+    archivesName = 'Custom-Blocks-Ultimate-v10'
 }
 
 repositories {
     maven { url 'https://maven.fabricmc.net/' }
+    maven { url 'https://maven.twelvemonkeys.com/' }
+    mavenCentral()
+}
+
+configurations {
+    include
+    implementation.extendsFrom include
 }
 
 dependencies {
     minecraft "com.mojang:minecraft:1.21.1"
     mappings  "net.fabricmc:yarn:1.21.1+build.3:v2"
-    modImplementation "net.fabricmc:fabric-loader:0.16.9"
-    modImplementation "net.fabricmc.fabric-api:fabric-api:0.104.0+1.21.1"
+    modImplementation "net.fabricmc:fabric-loader:0.16.7"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:0.108.0+1.21.1"
+
+    // TwelveMonkeys ImageIO - bundled for WebP/GIF/BMP/TIFF/ICO support
+    include "com.twelvemonkeys.imageio:imageio-core:3.10.1"
+    include "com.twelvemonkeys.imageio:imageio-jpeg:3.10.1"
+    include "com.twelvemonkeys.imageio:imageio-webp:3.10.1"
+    include "com.twelvemonkeys.imageio:imageio-bmp:3.10.1"
+    include "com.twelvemonkeys.imageio:imageio-tiff:3.10.1"
+    include "com.twelvemonkeys.imageio:imageio-gif:3.10.1"
+    include "com.twelvemonkeys.imageio:imageio-icns:3.10.1"
+    include "com.twelvemonkeys.common:common-lang:3.10.1"
+    include "com.twelvemonkeys.common:common-io:3.10.1"
+    include "com.twelvemonkeys.common:common-image:3.10.1"
 }
 
 processResources {
-    filteringCharset "UTF-8"
+    filteringCharset 'UTF-8'
+    inputs.property 'version', project.version
+    filesMatching('fabric.mod.json') {
+        expand 'version': project.version
+    }
 }
 
 tasks.withType(JavaCompile).configureEach {
@@ -32,4 +55,9 @@ tasks.withType(JavaCompile).configureEach {
 java {
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
+    withSourcesJar()
+}
+
+jar {
+    from("LICENSE") { rename { "${it}_${project.archivesName}" } }
 }
