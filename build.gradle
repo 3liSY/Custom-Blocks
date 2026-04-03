@@ -11,9 +11,8 @@ base {
 }
 
 repositories {
-    mavenCentral() // Moved to top for faster resolution
+    mavenCentral()
     maven { url 'https://maven.fabricmc.net/' }
-    // REMOVED: twelvemonkeys.com (it is unstable/down)
 }
 
 dependencies {
@@ -22,18 +21,19 @@ dependencies {
     modImplementation "net.fabricmc:fabric-loader:0.16.7"
     modImplementation "net.fabricmc.fabric-api:fabric-api:0.108.0+1.21.1"
 
-    // TwelveMonkeys ImageIO - Using 3.12.0 from Maven Central
-    // 'modImplementation' combined with 'include' ensures it's in the final JAR
+    // TwelveMonkeys ImageIO - Optimized for Fabric 1.21.1
+    // We use modImplementation + include so the JARs are bundled into your mod
     def tm_version = "3.12.0"
-    include(implementation("com.twelvemonkeys.imageio:imageio-core:${tm_version}"))
-    include(implementation("com.twelvemonkeys.imageio:imageio-jpeg:${tm_version}"))
-    include(implementation("com.twelvemonkeys.imageio:imageio-webp:${tm_version}"))
-    include(implementation("com.twelvemonkeys.imageio:imageio-bmp:${tm_version}"))
-    include(implementation("com.twelvemonkeys.imageio:imageio-tiff:${tm_version}"))
-    include(implementation("com.twelvemonkeys.imageio:imageio-gif:${tm_version}"))
-    include(implementation("com.twelvemonkeys.common:common-lang:${tm_version}"))
-    include(implementation("com.twelvemonkeys.common:common-io:${tm_version}"))
-    include(implementation("com.twelvemonkeys.common:common-image:${tm_version}"))
+    
+    include(modImplementation("com.twelvemonkeys.imageio:imageio-core:${tm_version}"))
+    include(modImplementation("com.twelvemonkeys.imageio:imageio-webp:${tm_version}"))
+    include(modImplementation("com.twelvemonkeys.imageio:imageio-gif:${tm_version}"))
+    include(modImplementation("com.twelvemonkeys.imageio:imageio-jpeg:${tm_version}"))
+    include(modImplementation("com.twelvemonkeys.imageio:imageio-bmp:${tm_version}"))
+    include(modImplementation("com.twelvemonkeys.imageio:imageio-tiff:${tm_version}"))
+    include(modImplementation("com.twelvemonkeys.common:common-lang:${tm_version}"))
+    include(modImplementation("com.twelvemonkeys.common:common-io:${tm_version}"))
+    include(modImplementation("com.twelvemonkeys.common:common-image:${tm_version}"))
 }
 
 processResources {
