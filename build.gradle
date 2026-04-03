@@ -11,29 +11,45 @@ base {
 }
 
 repositories {
+    // Priority 1: Standard Java libraries (TwelveMonkeys)
     mavenCentral()
+    // Priority 2: Fabric/Minecraft specific libraries
     maven { url 'https://maven.fabricmc.net/' }
 }
 
 dependencies {
+    // --- Minecraft & Fabric Core ---
     minecraft "com.mojang:minecraft:1.21.1"
     mappings  "net.fabricmc:yarn:1.21.1+build.3:v2"
     modImplementation "net.fabricmc:fabric-loader:0.16.7"
     modImplementation "net.fabricmc.fabric-api:fabric-api:0.108.0+1.21.1"
 
-    // TwelveMonkeys ImageIO - Optimized for Fabric 1.21.1
-    // We use modImplementation + include so the JARs are bundled into your mod
+    // --- TwelveMonkeys ImageIO (v10 Image Engine) ---
+    // We use 'implementation' for the build and 'include' to bundle it into the JAR.
+    // Do NOT use 'modImplementation' for these, as they are not Minecraft mods.
     def tm_version = "3.12.0"
     
-    include(modImplementation("com.twelvemonkeys.imageio:imageio-core:${tm_version}"))
-    include(modImplementation("com.twelvemonkeys.imageio:imageio-webp:${tm_version}"))
-    include(modImplementation("com.twelvemonkeys.imageio:imageio-gif:${tm_version}"))
-    include(modImplementation("com.twelvemonkeys.imageio:imageio-jpeg:${tm_version}"))
-    include(modImplementation("com.twelvemonkeys.imageio:imageio-bmp:${tm_version}"))
-    include(modImplementation("com.twelvemonkeys.imageio:imageio-tiff:${tm_version}"))
-    include(modImplementation("com.twelvemonkeys.common:common-lang:${tm_version}"))
-    include(modImplementation("com.twelvemonkeys.common:common-io:${tm_version}"))
-    include(modImplementation("com.twelvemonkeys.common:common-image:${tm_version}"))
+    // Code dependencies
+    implementation "com.twelvemonkeys.imageio:imageio-core:${tm_version}"
+    implementation "com.twelvemonkeys.imageio:imageio-webp:${tm_version}"
+    implementation "com.twelvemonkeys.imageio:imageio-gif:${tm_version}"
+    implementation "com.twelvemonkeys.imageio:imageio-jpeg:${tm_version}"
+    implementation "com.twelvemonkeys.imageio:imageio-bmp:${tm_version}"
+    implementation "com.twelvemonkeys.imageio:imageio-tiff:${tm_version}"
+    implementation "com.twelvemonkeys.common:common-lang:${tm_version}"
+    implementation "com.twelvemonkeys.common:common-io:${tm_version}"
+    implementation "com.twelvemonkeys.common:common-image:${tm_version}"
+
+    // Bundle these inside the final mod JAR
+    include "com.twelvemonkeys.imageio:imageio-core:${tm_version}"
+    include "com.twelvemonkeys.imageio:imageio-webp:${tm_version}"
+    include "com.twelvemonkeys.imageio:imageio-gif:${tm_version}"
+    include "com.twelvemonkeys.imageio:imageio-jpeg:${tm_version}"
+    include "com.twelvemonkeys.imageio:imageio-bmp:${tm_version}"
+    include "com.twelvemonkeys.imageio:imageio-tiff:${tm_version}"
+    include "com.twelvemonkeys.common:common-lang:${tm_version}"
+    include "com.twelvemonkeys.common:common-io:${tm_version}"
+    include "com.twelvemonkeys.common:common-image:${tm_version}"
 }
 
 processResources {
@@ -52,4 +68,11 @@ tasks.withType(JavaCompile).configureEach {
 java {
     sourceCompatibility = JavaVersion.VERSION_21
     targetCompatibility = JavaVersion.VERSION_21
+    withSourcesJar()
+}
+
+jar {
+    from("LICENSE") {
+        rename { "${it}_${project.archivesName}" }
+    }
 }
