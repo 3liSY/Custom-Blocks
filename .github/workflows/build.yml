@@ -24,8 +24,8 @@ jobs:
           gradle-version: 8.8
 
       - name: Build Mod
-        # Use 'gradle' directly to avoid the missing gradle-wrapper.jar error
-        run: gradle clean build --no-build-cache
+        # --refresh-dependencies fixes the "Could not find" and "Disowned lock" errors
+        run: gradle clean build --refresh-dependencies --no-build-cache
 
       - name: List build outputs
         run: ls -la build/libs/

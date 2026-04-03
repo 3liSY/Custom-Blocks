@@ -2,6 +2,16 @@ pluginManagement {
     repositories {
         maven { url 'https://maven.fabricmc.net/' }
         gradlePluginPortal()
+        mavenCentral()
     }
 }
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        mavenCentral()
+        maven { url 'https://maven.fabricmc.net/' }
+    }
+}
+
 rootProject.name = 'Custom-Blocks-Ultimate-v10'
