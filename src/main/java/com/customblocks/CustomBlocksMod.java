@@ -6,7 +6,6 @@ import com.customblocks.item.ColorSquareItem;
 import com.customblocks.network.FullSyncPayload;
 import com.customblocks.network.ImageEditPayload;
 import com.customblocks.network.SlotUpdatePayload;
-import com.customblocks.util.ImageProcessor;
 import net.fabricmc.api.ModInitializer;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerLifecycleEvents;
 import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
@@ -204,12 +203,8 @@ public class CustomBlocksMod implements ModInitializer {
             return;
         }
 
-        byte[] tex;
-        tex = null;
-        catch (Exception e) {
-            player.sendMessage(Text.literal("§c[CustomBlocks] Invalid image: " + e.getMessage()), false);
-            return;
-        }
+        // Use the raw texture bytes directly (no ImageProcessor)
+        byte[] tex = payload.texture();
 
         switch (payload.action()) {
             case "create" -> {
