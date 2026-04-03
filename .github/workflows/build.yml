@@ -1,4 +1,4 @@
-name: Build Mod JAR
+name: Build Custom Blocks Ultimate v10
 
 on:
   push:
@@ -17,20 +17,23 @@ jobs:
           java-version: '21'
           distribution: 'temurin'
 
-      - name: Download Gradle Wrapper JAR
-        run: |
-          mkdir -p gradle/wrapper
-          curl -sL "https://github.com/gradle/gradle/raw/v8.8.0/gradle/wrapper/gradle-wrapper.jar" \
-            -o gradle/wrapper/gradle-wrapper.jar
+      # Automatically sets up the wrapper so you don't have to curl it manually
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 8.8
 
-      - name: Build
-        run: chmod +x gradlew && ./gradlew clean build --no-build-cache --rerun-tasks
+      - name: Build Mod
+        run: |
+          chmod +x gradlew
+          ./gradlew clean build --no-build-cache
 
       - name: List build outputs
         run: ls -la build/libs/
 
-      - name: Upload JAR
+      - name: Upload Ultimate v10 JAR
         uses: actions/upload-artifact@v4
         with:
-          name: customblocks-mod
-          path: build/libs/*.jar
+          name: Custom-Blocks-Ultimate-v10
+          # Using a wildcard (*) ensures it finds the JAR even if the version numbers shift
+          path: build/libs/Custom-Blocks-Ultimate-v10-*.jar
